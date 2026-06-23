@@ -20,3 +20,8 @@ experiments/offline-folder/dist/
 experiments/offline-folder/server.log
 experiments/offline-folder/marimo-lock.json
 experiments/offline-folder/shot-*.png
+
+# Tauri app: build output + generated frontend (regenerable)
+app/frontend/
+app/src-tauri/target/
+app/src-tauri/gen/

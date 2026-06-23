@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability. The frontend is a self-contained marimo export that makes no Tauri IPC calls yet, so only the core defaults are granted.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

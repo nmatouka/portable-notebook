@@ -36,6 +36,7 @@ The spec stages the work to derisk the genuinely uncertain parts first:
 
 - ✅ Spec drafted and reviewed (scope: macOS + Windows).
 - ✅ Experiment #1 — marimo WASM export runs **fully offline** (load + live slider recompute, zero network) on both Chromium and WebKit. See the [experiment write-up](experiments/offline-folder/README.md).
-- ⏭️ Next: Step 2 — wrap the vendored folder in a Tauri shell.
+- ✅ Step 2 — wrapped in a [Tauri shell](app/): the built `.app` opens the notebook in a native WebKit window, numpy computes, and the slider drives live recompute — all offline over Tauri's `tauri://localhost` asset protocol. This also confirms (on macOS/WebKit) the Step-3 unknown: **Web Workers + streaming WASM work over a custom protocol**.
+- ⏭️ Next: Step 3 — a dedicated `app://` secure protocol; then Step 4 — the `.mnote` file association + open-file handler.
 
 The product name is still undecided. The file extension is **`.mnote`** (finalized 2026-06-23) — a config value (file-association manifest + a constant in the player), not an architectural choice.
