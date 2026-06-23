@@ -1,10 +1,20 @@
-# Experiment #1 — Offline-in-a-folder
+# Experiment #1 — Offline-in-a-folder ✅ PASSED
 
 **Goal (spec §6 step 1 / §10):** prove that a `marimo export html-wasm` notebook can run **with no network** once Pyodide and the required wheels are vendored locally. This is the only genuinely uncertain piece of the whole project; everything else is derisked only after this passes.
 
-**Status:** 🔄 In progress.
-- ✅ Export runs **online** in headless Chromium — numpy executes in WASM and the slider-driven output renders.
-- ⏳ Offline vendoring + the offline-blocked re-test (Chromium **and** WebKit) not yet done.
+## Result
+
+**Passes on both engines — Chromium and WebKit — with zero network.** Tested by aborting *every* non-localhost request at the browser layer (stricter than "Wi-Fi off"):
+
+| | Chromium | WebKit |
+|---|---|---|
+| Loaded offline | ✅ | ✅ |
+| numpy computed in WASM | `$1,628.89` | `$1,628.89` |
+| Slider → live recompute | `$3,394.57` | `$3,394.57` |
+| External requests | **0** | **0** |
+| Requests blocked (needed but missing) | **0** | **0** |
+
+The spec's success criterion — *"if the slider works offline, the only real unknown is beaten"* — is met. Cleared to proceed to Step 2 (Tauri wrap).
 
 ---
 
@@ -12,72 +22,82 @@
 
 | File | Purpose |
 |------|---------|
-| `notebook.py` | Trivial test notebook: an interest-rate slider driving a numpy compound-interest calc. PEP 723 inline deps (sandbox style). |
-| `capture.mjs` | Playwright harness. Loads the export, waits for the computed output, logs all network traffic, drives the slider, screenshots. Runs `online` (log traffic) or `offline` (abort every non-localhost request — a stricter test than "Wi-Fi off"). |
-| `package.json` / `package-lock.json` | Pins Playwright. |
-| `dist/` | *(gitignored)* the WASM export. Regenerate with the command below. |
-| `.venv/`, `node_modules/` | *(gitignored)* toolchains. |
+| `notebook.py` | Test notebook: an interest-rate slider driving a numpy compound-interest calc. PEP 723 inline deps. |
+| `external-urls.txt` | The 18 remote URLs the export fetches (captured online). Input to `vendor.sh`. |
+| `vendor.sh` | Mirrors those 18 URLs into `dist/_vendor/<host>/<path>` and rewrites the worker bundles + lock JSON to local paths. Re-run after a fresh export. |
+| `capture.mjs` | Playwright harness. `online` logs traffic + writes the URL list; `offline` aborts every non-local request. Verifies initial render **and** slider-driven recompute on `chromium`/`webkit`. |
+| `dist/` | *(gitignored)* the WASM export + `dist/_vendor/` (the vendored runtime). Regenerate with the commands below. |
 
 ## Reproduce
 
 ```bash
 cd experiments/offline-folder
 
-# 1. Python env + marimo
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python marimo numpy
-
-# 2. Export the notebook to a WASM-HTML folder
 .venv/bin/marimo export html-wasm notebook.py -o dist --mode run
 
-# 3. Node env for the test harness
-npm install
-npx playwright install chromium webkit
+npm install && npx playwright install chromium webkit
 
-# 4. Serve + verify ONLINE (proves the export works, logs what it fetches)
+# serve + capture the remote URL list (online, once)
 .venv/bin/python -m http.server 8123 --directory dist &
-node capture.mjs chromium online
+node capture.mjs chromium online        # confirms it works + records external-urls.txt
+
+# vendor everything locally, then prove it offline
+bash vendor.sh
+node capture.mjs chromium offline
+node capture.mjs webkit   offline
 ```
 
 ---
 
-## Findings so far
+## Findings
 
-### 1. The export already self-vendors marimo's frontend
-`marimo export html-wasm` copies marimo's entire JS/CSS frontend bundle into `dist/assets/` (~27 MB, ~680 files). So of the **three vendoring layers** the spec calls out, layer (a) — the marimo frontend — is handled for free by the export. Only the **Pyodide runtime** and the **wheels** are fetched remotely and need vendoring.
+### 1. The export self-vendors marimo's frontend (layer 1 is free)
+`marimo export html-wasm` copies marimo's entire JS/CSS frontend into `dist/assets/` (~27 MB). Of the spec's **three vendoring layers**, only the **Pyodide runtime** and the **wheels** are fetched remotely and need vendoring.
 
-### 2. Exact remote dependency set: 18 files, 4 hosts
-Captured by loading the export online and logging every request. Pyodide is **`v314.0.0`** (a Python 3.14 / ABI `2026_0` build).
+### 2. Exact remote set: 18 files, 4 hosts (Pyodide `v314.0.0`, Python 3.14 / ABI `2026_0`)
 
 | Host | What it serves |
 |------|----------------|
-| `cdn.jsdelivr.net/pyodide/v314.0.0/full/` | Pyodide core (`pyodide.asm.wasm`, `pyodide.asm.mjs`, `python_stdlib.zip`) + most wheels (numpy, micropip, msgspec, pyyaml, docutils, jedi, parso, packaging, pygments, pyodide_http) |
-| `wasm.marimo.app` | `pyodide-lock.json` (the marimo-specific package lock) |
-| `test-files.pythonhosted.org` (**TestPyPI**) | `marimo_base-0.23.10-py3-none-any.whl` |
+| `cdn.jsdelivr.net/pyodide/v314.0.0/full/` | Pyodide core (`pyodide.asm.wasm`, `pyodide.asm.mjs`, `python_stdlib.zip`) + base wheels (numpy, micropip, msgspec, pyyaml, docutils, jedi, parso, packaging, pygments, pyodide_http) |
+| `wasm.marimo.app` | `pyodide-lock.json` |
+| `test-files.pythonhosted.org` (TestPyPI) | `marimo_base-0.23.10` |
 | `files.pythonhosted.org` (PyPI) | `markdown`, `narwhals`, `pymdown_extensions` |
 
-So the wheel set for this notebook = **marimo_base + its dependency closure + numpy**. The Pyodide *core* and *most base wheels* come from jsDelivr; only marimo itself and a few pure-Python deps come from (Test)PyPI.
+Relative wheel names in the lock resolve against the **jsDelivr** base (`packageBaseUrl`); only marimo and the 3 PyPI deps carry absolute URLs.
 
-### 3. The version-skew worry did NOT bite
-The spec flagged that the frozen frontend version and the served wheel could drift. In practice the lock is requested as `pyodide-lock.json?v=0.23.10&pyodide=v314.0.0`, so it serves the **matching** `marimo_base-0.23.10`. (A raw fetch of the lock *without* the query returns an older `0.23.9` — so always pass the version query.)
+### 3. Vendoring strategy: host-mirroring
+Mirror every URL `https://H/P` → `dist/_vendor/H/P`, then rewrite `https://H/` → local in the worker bundles and the lock JSON. Preserving host+path means every URL the loader *constructs* lines up automatically — no need to model `packageBaseUrl` derivation.
 
-### 4. WASM MIME is a non-issue locally
-`python -m http.server` (Python 3.12) serves `.wasm` as `application/wasm`, so `WebAssembly.instantiateStreaming` is satisfied without any custom MIME handling. (The custom-protocol handler in later steps must replicate this.)
+### 4. The one real gotcha: `new URL(wheel, base)` needs an **absolute** base
+Pyodide loads the **core** by string concatenation (a root-relative `/_vendor/...` path works), but loads **wheels** via `new URL(fileName, packageBaseUrl)` — and a root-relative base throws `Failed to construct 'URL': Invalid base URL`. Fix: inject the runtime origin so the base is absolute. The jsDelivr base lives in a backtick template literal, so:
 
-### 5. Loader strings to repoint for offline
-The two worker bundles build remote URLs from these literals (must be rewritten to local paths, plus the lock's absolute (Test)PyPI URLs rewritten to local filenames):
-- `dist/assets/worker-Bp53hInb.js` and `dist/assets/save-worker-Bcr7rl0C.js`
-  - `` `https://cdn.jsdelivr.net/pyodide/v${…}/full/` `` → local `pyodide/` dir
-  - `` `https://wasm.marimo.app/pyodide-lock.json?v=${…}&pyodide=${…}` `` → local lock
+```
+https://cdn.jsdelivr.net/  →  ${self.location.origin}/_vendor/cdn.jsdelivr.net/
+```
 
-### Cross-origin isolation
-As the spec predicted, single-threaded WASM means **no `SharedArrayBuffer`**, so no COOP/COEP headers were needed — the export loads and runs without cross-origin isolation. (To be re-confirmed under the custom protocol in step 3.)
+`self.location.origin` is **portable**: it's the static-server origin now and the `app://` custom-protocol origin in Step 3. The marimo lock is only `fetch()`'d, so it stays a plain root-relative path.
+
+### 5. WASM MIME is a non-issue locally
+`python -m http.server` (3.12) serves `.wasm` as `application/wasm`, satisfying `WebAssembly.instantiateStreaming` with no custom handling. (The Step-3 custom protocol must replicate this.)
+
+### 6. Cross-origin isolation not needed (as predicted)
+Single-threaded WASM ⇒ no `SharedArrayBuffer` ⇒ no COOP/COEP headers. The export loads under both engines without cross-origin isolation. (Re-confirm under the custom protocol in Step 3.)
+
+### 7. The version-skew worry did not bite
+The lock is requested as `pyodide-lock.json?v=0.23.10&pyodide=v314.0.0` and serves the matching `marimo_base-0.23.10`. (Fetching the lock *without* the query returns an older `0.23.9` — always pass the version query.)
+
+### 8. WebKit-only quirk (cosmetic, non-blocking)
+WebKit requests three fonts (`PTSans`, `Lora`) at the **root** path instead of `/assets/...` → local 404s. They're cosmetic (the compute path is unaffected and text renders), but worth fixing later by correcting the font `url()` base. **Flag for Step 2/3** since engine-specific path quirks are exactly what cross-engine support must catch.
+
+### 9. The marimo slider lives in shadow DOM
+The thumb is `span[role="slider"]` inside the `<marimo-slider>` web component's open shadow root — invisible to `document.querySelector` but reachable by Playwright locators (which pierce open shadow DOM). Drive it by focusing `[role="slider"]` and pressing Arrow keys.
 
 ---
 
-## Open items / next steps
-
-1. **Vendor** the 18 files into `dist/pyodide/`; rewrite the lock's absolute URLs → local filenames; patch the two worker bundles to local paths.
-2. **Offline proof:** run `node capture.mjs chromium offline` and `node capture.mjs webkit offline` — both must render with **zero** non-local requests reaching the network (the harness aborts them and logs any attempt).
-3. **Fix the slider selector** in `capture.mjs` — marimo's slider is a custom component, not a raw `input[type="range"]`, so the interactivity assertion currently errors (initial render is verified; live recompute is not yet).
-4. **Note the version floor:** the runtime targets bleeding-edge **Python 3.14 / Pyodide v314**. Worth tracking as an aggressive minimum.
+## Carry-forward for later steps
+- **Version floor:** the runtime targets bleeding-edge **Python 3.14 / Pyodide v314**. Track as an aggressive minimum.
+- **Portability of the fix:** the `${self.location.origin}` rewrite already works for any origin, so Step 3's `app://` protocol should need no change to the vendoring — only a handler that serves `/_vendor/...` with correct MIME.
+- **WebKit font 404s** (finding #8) to resolve before shipping.
+- `vendor.sh` is **not idempotent** — it rewrites `https://` → local, so re-run it only on a freshly exported `dist/`.

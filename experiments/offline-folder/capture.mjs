@@ -51,11 +51,13 @@ try {
     return m ? m[0] : null;
   });
 
-  // prove interactivity: change the slider, expect the number to change
+  // prove interactivity: change the slider, expect the number to change.
+  // marimo's slider thumb is a span[role=slider] inside the <marimo-slider>
+  // web component's (open) shadow DOM — Playwright locators pierce it.
   try {
-    const slider = page.locator('input[type="range"]').first();
+    const slider = page.locator('[role="slider"]').first();
     await slider.focus();
-    for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
+    for (let i = 0; i < 8; i++) await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(2500);
     computed2 = await page.evaluate(() => {
       const m = document.body.innerText.match(/grows to[^\n]*/);

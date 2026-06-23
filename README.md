@@ -26,7 +26,7 @@ Recommended stack is **Tauri** (native webview, small shell binary). Initial tar
 
 The spec stages the work to derisk the genuinely uncertain parts first:
 
-1. **Offline-in-a-folder** — prove Pyodide + wheels load with no network. *(in progress — see the experiment)*
+1. **Offline-in-a-folder** — prove Pyodide + wheels load with no network. *(✅ passed — see the experiment)*
 2. Wrap the working folder in a Tauri shell.
 3. Replace static serving with a custom secure protocol.
 4. Add the file association + open-file handler (loads whichever notebook was double-clicked).
@@ -35,6 +35,7 @@ The spec stages the work to derisk the genuinely uncertain parts first:
 ## Status
 
 - ✅ Spec drafted and reviewed (scope: macOS + Windows).
-- 🔄 Experiment #1 — marimo WASM export runs **online** in headless Chromium; offline vendoring in progress.
+- ✅ Experiment #1 — marimo WASM export runs **fully offline** (load + live slider recompute, zero network) on both Chromium and WebKit. See the [experiment write-up](experiments/offline-folder/README.md).
+- ⏭️ Next: Step 2 — wrap the vendored folder in a Tauri shell.
 
 The product name is still undecided. The file extension is **`.mnote`** (finalized 2026-06-23) — a config value (file-association manifest + a constant in the player), not an architectural choice.
