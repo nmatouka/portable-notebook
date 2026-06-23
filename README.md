@@ -37,4 +37,4 @@ The spec stages the work to derisk the genuinely uncertain parts first:
 - ✅ Spec drafted and reviewed (scope: macOS + Windows).
 - 🔄 Experiment #1 — marimo WASM export runs **online** in headless Chromium; offline vendoring in progress.
 
-The file extension and product name are intentionally undecided (the spec uses `.EXT` as a placeholder). This is a deliberately deferred, fully reversible config choice — not an architectural one.
+The product name is still undecided. The file extension is **`.mnote`** (finalized 2026-06-23) — a config value (file-association manifest + a constant in the player), not an architectural choice.

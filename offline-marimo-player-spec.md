@@ -1,31 +1,31 @@
 # Offline Marimo Notebook Player — Build Specification
 
-*(Working title. The product name and file extension are both undecided — see the placeholder note below. The extension is referred to throughout as `.EXT`.)*
+*(Working title — the product name is still undecided. The file extension is **`.mnote`**, finalized 2026-06-23.)*
 
 **A desktop app that opens marimo notebooks by double-click, fully offline, with live interactivity.**
 
 This document is a build brief for an implementing agent (Claude Code). It contains the full context, the architecture decision, the package-resolution design, a staged build plan that derisks the hard part first, and the known gotchas. Read it top to bottom before scaffolding anything.
 
-> **⚠️ File extension is undecided — `.EXT` is a placeholder.**
-> Everywhere this doc says `.EXT`, substitute the final extension once chosen. This is a deliberately deferred, fully reversible decision: it's a config value (file-association manifest + a constant in the player), not an architectural one. **Do not block any build work on it.** Use the literal string `EXT` as the extension during development so it's trivial to find-and-replace later.
+> **✅ File extension: `.mnote`** *(finalized 2026-06-23).*
+> Use `.mnote` everywhere — the payload extension, the file-association manifest, and the constant in the player. It remains a config value, not an architectural one; changing it later is still a contained find-and-replace.
 >
-> Decision criteria when finalizing (for reference):
-> - **Must be an available extension** — verify against extension databases (fileinfo.com, file-extensions.org) that no current software claims it. Real/pronounceable words almost always have a dead format squatting on them; a coined 4-letter non-word is the safest path to a clean claim.
-> - **Brand-neutral** — the project is being released anonymously; the name must not tie back to any brand or reference marimo (avoids both collision and attribution).
-> - **Must NOT be `.py`** — a `.py` extension reads as intimidating "source code" to non-technical recipients and may be hijacked by an installed editor/Python. The whole point is to signal "this is a document you open," not "this is code." The internal payload can still be a marimo `.py`; the user never sees it (same way a `.docx` is secretly a zip of XML).
-> - Pleasant to look at, lowercase, letters only (a digit is acceptable only if it meaningfully lowers collision risk).
+> Why `.mnote` satisfies the original decision criteria:
+> - **Available** — checked against the extension databases (fileinfo.com, file-extensions.org, file.org): no current software claims `.mnote` (nearest hits are unrelated formats like `.motn` and `.mno`). Clean to claim.
+> - **Not `.py`** — signals "a document you open," not intimidating "source code," and avoids being hijacked by an installed editor/Python. The internal payload is still a marimo `.py` the user never sees (same way a `.docx` is secretly a zip of XML).
+> - **Brand-neutral enough** — reads as a generic "note" format and does not spell out or obviously reference marimo. *(Minor: an insider might read the leading `m` as "marimo" — judged acceptable, and reversible if it ever matters.)*
+> - Lowercase, letters only, pleasant to read.
 
 ---
 
 ## 1. Goal
 
-Build an open-source desktop application that lets a user **double-click a `.EXT` file and have a marimo notebook open as a live, interactive document — with no terminal, no hosting, and no internet connection required.**
+Build an open-source desktop application that lets a user **double-click a `.mnote` file and have a marimo notebook open as a live, interactive document — with no terminal, no hosting, and no internet connection required.**
 
 The intended end-user flow:
 
-1. An author creates a marimo notebook and bundles it as a `.EXT` file.
+1. An author creates a marimo notebook and bundles it as a `.mnote` file.
 2. A recipient installs this player app **once**.
-3. From then on, the recipient double-clicks any `.EXT` file and it opens live and offline. Sliders, inputs, and recomputation all work.
+3. From then on, the recipient double-clicks any `.mnote` file and it opens live and offline. Sliders, inputs, and recomputation all work.
 
 This is acceptable and intended: the runtime lives in the installed app, not in the file. The file is a portable payload; the player supplies the runtime. (This is the same bargain as Wolfram's old CDF Player, but built on open standards — HTML/WASM/Python — instead of a proprietary engine.)
 
@@ -58,8 +58,8 @@ The elegant path uses two insights:
 **Insight 1 — a custom secure protocol replaces the local web server AND the CDN interception.**
 Both Tauri and Electron let you register a custom URI scheme (e.g. `app://` (placeholder scheme name)) and mark it as a **secure, standard** origin. A page served over that scheme is a trusted context with full access to ES modules, Web Workers, `fetch`, and streaming WASM. This solves Problem A with no separate localhost HTTP server and no port management — the protocol handler *is* the server, built into the webview. Because everything it serves comes from the app's bundled asset folder, it also contributes to solving Problem B (offline by construction). **Confirm this per-platform before relying on it:** native webviews are not identical — WKWebView (macOS) and WebView2 (Windows) differ, and Tauri's custom-protocol origin string itself differs (`scheme://localhost` on macOS vs `http://scheme.localhost` on Windows). marimo runs Pyodide in a Web Worker, so verify worker spawning + streaming WASM over the custom scheme on **each** target OS. Treat this as a second real unknown, not a given (see §6).
 
-**Insight 2 — the app owns the runtime; the `.EXT` is just the notebook payload.**
-Do not post-process each exported HTML file to rewrite CDN links. Flip the model: the **player bundles marimo's WASM frontend + Pyodide + a base wheel set once**, into the app. The `.EXT` is then primarily the notebook itself — ideally a marimo `.py` notebook authored with `--sandbox` so it carries its dependency list inline (PEP 723). The player reads the declared deps, resolves the wheels locally, and loads the notebook into its own runtime. This keeps `.EXT` files tiny and self-describing, eliminates per-file URL rewriting, and mirrors how marimo.app / molab already work (host provides runtime, notebook is payload) — just packaged for offline.
+**Insight 2 — the app owns the runtime; the `.mnote` is just the notebook payload.**
+Do not post-process each exported HTML file to rewrite CDN links. Flip the model: the **player bundles marimo's WASM frontend + Pyodide + a base wheel set once**, into the app. The `.mnote` is then primarily the notebook itself — ideally a marimo `.py` notebook authored with `--sandbox` so it carries its dependency list inline (PEP 723). The player reads the declared deps, resolves the wheels locally, and loads the notebook into its own runtime. This keeps `.mnote` files tiny and self-describing, eliminates per-file URL rewriting, and mirrors how marimo.app / molab already work (host provides runtime, notebook is payload) — just packaged for offline.
 
 **Note that marimo itself runs *inside* Pyodide** — the kernel is a Python package executing in the WASM runtime. So "the app bundles the runtime" means bundling **three coupled layers**: (a) marimo's frontend JS/CSS bundle, (b) the Pyodide runtime, and (c) a wheel set that **includes the `marimo` wheel and its dependencies**, not just numpy/pandas. These three are version-locked: the player ships a frozen marimo+Pyodide tuple, and a notebook authored against a newer marimo runs against the bundled version. Make that a conscious decision, not an accident.
 
@@ -76,9 +76,9 @@ Electron is a valid fallback (identical rendering everywhere) but costs ~100MB+ 
 
 ---
 
-## 4. The `.EXT` file format
+## 4. The `.mnote` file format
 
-- At its core, a `.EXT` is a marimo notebook (`.py`, authored with `--sandbox` so dependencies are declared inline via PEP 723).
+- At its core, a `.mnote` is a marimo notebook (`.py`, authored with `--sandbox` so dependencies are declared inline via PEP 723).
 - It MAY optionally bundle wheels for exotic packages it needs (see tier 2 below). A reasonable container is a zip with a documented layout (e.g. `notebook.py` + `wheels/` + a small `manifest.json`), but the simplest viable v1 is just the sandboxed `.py` with no bundled wheels. Decide the container format early and document it.
 - The file must be **portable across OSes**. Only the *player* is per-platform; the file is not.
 
@@ -89,7 +89,7 @@ Electron is a valid fallback (identical rendering everywhere) but costs ~100MB+ 
 When a notebook needs a package, the player checks tiers in order and stops at the first hit.
 
 1. **Baked into the app** — **`marimo` itself and its dependencies** (required — the kernel runs in Pyodide), plus the common scientific set: `numpy`, `pandas`, `matplotlib`, `scipy`, `scikit-learn` (tune this list). Vendored on disk so they're always offline. Note "always present" means *present on disk*, not loaded into every runtime: **lazy-load each wheel on first import** so opening a notebook doesn't pay the cost of scipy+sklearn it never uses. Covers the majority of notebooks.
-2. **Bundled in the `.EXT`** — if a file declares an exotic package, it can carry that wheel inside itself. Player finds it locally; still fully offline.
+2. **Bundled in the `.mnote`** — if a file declares an exotic package, it can carry that wheel inside itself. Player finds it locally; still fully offline.
 3. **Fetched on demand** — if a package is in neither place, download once via `micropip` and cache it. Online only for that first fetch; offline forever after. **Bounded by Pyodide:** this only works for pure-Python wheels and packages in Pyodide's own distribution — arbitrary PyPI packages with C extensions Pyodide hasn't built will *not* install, so surface that clearly rather than failing mid-run. Treat the tier-3 fetch as **gated by user confirmation** (see §7, Security model): an untrusted file should never silently trigger a download.
 
 ### Why this is low-effort
@@ -102,7 +102,7 @@ A small function: `resolve(package_name, version) -> wheel`, trying **app cache 
 
 ### Two things to build in from the start (annoying to retrofit)
 - **One shared cache, keyed by package name + version.** Tier-2 bundles and tier-3 downloads land in the same store, so a package fetched for one notebook is instantly available to the next. Version-keying avoids two notebooks silently colliding on different versions of the same lib.
-- **Up-front dependency resolution.** Because a sandboxed `.EXT` declares its full dependency list inline, resolve everything *before* running cells. Then either proceed fully offline, or clearly tell the user "this notebook needs X — one-time download" before execution. No mid-run cell death because a wheel was missing.
+- **Up-front dependency resolution.** Because a sandboxed `.mnote` declares its full dependency list inline, resolve everything *before* running cells. Then either proceed fully offline, or clearly tell the user "this notebook needs X — one-time download" before execution. No mid-run cell death because a wheel was missing.
 
 ### Visible state indicator
 Show whether a file is "instantly offline" or "needs a quick download." A small "preparing — downloading N packages" line on first open, then nothing on subsequent opens. Keeps it honest and unsurprising.
@@ -117,7 +117,7 @@ Show whether a file is "instantly offline" or "needs a quick download." A small 
    Take one `marimo export html-wasm` output. Vendor all three layers it needs — marimo's frontend bundle, the Pyodide runtime, and the wheels (incl. the `marimo` wheel itself) — and rewrite references to relative paths. Serve the folder with any dumb static server (`python -m http.server`) and confirm the slider recomputes with **no network**.
    - ⚠️ **Disabling Wi-Fi is not a reliable offline test.** The browser may serve CDN assets cached from an earlier online run, giving a false pass. Use a fresh browser profile / hard cache-clear and confirm **zero** non-local requests in the DevTools Network panel.
    - **Validate on both engines early.** Run this proof in **WebKit (macOS)** and **Chromium (Windows WebView2)** — different WASM/worker implementations, and this is the cheapest place to catch an engine-specific failure before it's buried under the Tauri shell (see §8).
-   - **Also lock the `.EXT` container format before Step 4** (it's painful to retrofit): bare `.py` vs a zip with `notebook.py` + `wheels/` + `manifest.json`. It dictates the resolver and the open-file path. Simplest viable v1 is the sandboxed `.py`; decide and document now, not during polish.
+   - **Also lock the `.mnote` container format before Step 4** (it's painful to retrofit): bare `.py` vs a zip with `notebook.py` + `wheels/` + `manifest.json`. It dictates the resolver and the open-file path. Simplest viable v1 is the sandboxed `.py`; decide and document now, not during polish.
 
 2. **Wrap it.**
    Drop that working folder into a Tauri shell that opens a webview to it. Now it's a double-clickable app instead of a terminal command.
@@ -125,7 +125,7 @@ Show whether a file is "instantly offline" or "needs a quick download." A small 
 3. **Swap static serving for the `app://` (placeholder scheme name) custom protocol — critical experiment #2.**
    Removes the bundled server and gives a clean secure origin. **This is a real unknown, not a swap:** confirm Web Workers + streaming WASM + `fetch` all work over the custom scheme on each target OS (see §3, Insight 1). Expect to fight Tauri's default CSP here — Pyodide needs `script-src 'wasm-unsafe-eval'` to compile and run WASM, and the stock strict CSP will block it.
 
-4. **Add the `.EXT` file association + open-file handler — critical experiment #3.**
+4. **Add the `.mnote` file association + open-file handler — critical experiment #3.**
    Switch from "runtime opens a baked-in notebook" to "runtime **injects** whichever notebook was double-clicked into the bundled kernel." **This is the second hidden unknown:** feeding a raw `.py` into a pre-bundled marimo-wasm runtime is a different mechanism than serving a pre-baked export, and is *not* validated by Step 1 — spike it separately. Also handle the macOS gotcha: a double-click arrives as an Apple Event that can fire **before** the webview is ready, so buffer the requested path until the frontend signals ready (Windows passes it via argv). **This step delivers the core vision.**
 
 5. **Polish.**
@@ -142,7 +142,7 @@ This product is, structurally, **"double-click a file from someone and it runs t
 
 - **What Pyodide does and doesn't sandbox.** Pyodide runs in the webview's sandbox: no real filesystem, no subprocesses, no threading. That contains a lot. It does **not** by itself stop network egress (`fetch` / `micropip`), CPU abuse, or convincing in-document UI.
 - **Network egress policy (decide explicitly).** A notebook can `fetch()` and exfiltrate or phone home. Lock this down at the webview layer via CSP / the Tauri allowlist. Default to **no notebook-initiated network**, with tier-3 wheel fetches as the one controlled exception.
-- **Tier-3 downloads are driven by untrusted files.** A `.EXT` declares its deps and the player fetches them. Gate this behind the "this notebook needs X — one-time download" confirmation (§5): it is both good UX *and* the security boundary. Never silently auto-download because a file asked.
+- **Tier-3 downloads are driven by untrusted files.** A `.mnote` declares its deps and the player fetches them. Gate this behind the "this notebook needs X — one-time download" confirmation (§5): it is both good UX *and* the security boundary. Never silently auto-download because a file asked.
 - **UI spoofing.** A live notebook renders arbitrary UI inside what the user perceives as a trusted viewer (fake dialogs, phishing forms). Consider a persistent, non-spoofable window chrome that marks content as untrusted.
 - **Open-source / anonymous release doesn't change any of the above.** Bundled deps (marimo Apache-2.0, Pyodide, Tauri) still carry attribution / NOTICE obligations even when released anonymously.
 
@@ -160,7 +160,7 @@ None of this needs heavy machinery for a v1 aimed at your own machines or a clas
 
 | | macOS | Windows |
 |---|---|---|
-| **Register** | UTI in Info.plist (`CFBundleDocumentTypes` + an exported UTI for `.EXT`) | Registry (`HKCR\.EXT`, ProgID, `shell\open\command`), written by the installer |
+| **Register** | UTI in Info.plist (`CFBundleDocumentTypes` + an exported UTI for `.mnote`) | Registry (`HKCR\.mnote`, ProgID, `shell\open\command`), written by the installer |
 | **Path arrives as** | Apple Event — can fire *before* the webview is ready | `argv[1]` |
 | **App already running** | event routed to existing instance | new process spawns → must forward |
 
@@ -191,7 +191,7 @@ Re-adding Linux later = WebKitGTK validation of experiment #1 + freedesktop `.de
 ## 9. Known caveats / non-goals
 
 - **First-install friction is real but normal.** The first time, the recipient downloads and installs the app. Because it's a niche app, expect an "unidentified developer" warning unless code-signed (Apple ~$99/yr; Windows certs vary). Fine for friends/internal use; sign it for strangers or a product.
-- **Cross-platform = build per OS.** The `.EXT` is portable; the player is not. Initial targets are macOS + Windows (Linux deferred); each is built on its own OS via a CI matrix — see §8 for the full breakdown.
+- **Cross-platform = build per OS.** The `.mnote` is portable; the player is not. Initial targets are macOS + Windows (Linux deferred); each is built on its own OS via a CI matrix — see §8 for the full breakdown.
 - **Not a fit for "email a stranger a file they open with zero setup."** For that, host the WASM export and send a link. This player is for cases where a one-time install is acceptable (own machines, a classroom, an internal team, a kiosk, a paid product).
 - **Package coverage is bounded by Pyodide.** Pure-Python wheels on PyPI plus the Pyodide-supported set work; some packages won't. No threading/multiprocessing. 2GB memory ceiling in WASM.
 
