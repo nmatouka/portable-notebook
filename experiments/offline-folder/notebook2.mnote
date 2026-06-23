@@ -1,0 +1,43 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo",
+#     "numpy",
+# ]
+# ///
+
+import marimo
+
+__generated_with = "0.23.10"
+app = marimo.App(width="medium")
+
+
+@app.cell
+def _(mo):
+    mo.md("# Celsius to Fahrenheit (opened from a .mnote)")
+    return
+
+
+@app.cell
+def _():
+    import marimo as mo
+    import numpy as np
+    return mo, np
+
+
+@app.cell
+def _(mo):
+    celsius = mo.ui.slider(0, 100, value=20, step=1, label="Celsius")
+    celsius
+    return (celsius,)
+
+
+@app.cell
+def _(mo, np, celsius):
+    fahrenheit = np.float64(celsius.value) * 9 / 5 + 32
+    mo.md(f"**{celsius.value} °C = {fahrenheit:.1f} °F** — converted by numpy, injected at open time.")
+    return
+
+
+if __name__ == "__main__":
+    app.run()

@@ -14,4 +14,15 @@ fi
 
 rm -rf frontend
 cp -R "$SRC" frontend
-echo "synced $(find frontend -type f | wc -l | tr -d ' ') files into app/frontend ($(du -sh frontend | cut -f1))"
+
+# The app serves the frontend over the mnote:// custom protocol. Pin the vendored
+# loader's absolute base to that scheme so `new URL(wheel, base)` always has a
+# valid hierarchical base, regardless of how self.location.origin resolves under
+# a custom scheme. (Experiment #1 left it as ${self.location.origin} for the
+# static-server case.)
+for w in frontend/assets/worker-*.js frontend/assets/save-worker-*.js; do
+  [ -e "$w" ] || continue
+  perl -pi -e 's#\$\{self\.location\.origin\}/_vendor/#mnote://localhost/_vendor/#g' "$w"
+done
+
+echo "synced $(find frontend -type f | wc -l | tr -d ' ') files into app/frontend ($(du -sh frontend | cut -f1)), pinned loader base to mnote://localhost"

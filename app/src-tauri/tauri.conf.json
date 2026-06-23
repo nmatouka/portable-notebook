@@ -4,18 +4,10 @@
   "version": "0.1.0",
   "identifier": "app.mnote.player",
   "build": {
-    "frontendDist": "../frontend"
+    "frontendDist": "../placeholder-dist"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "mnote Player",
-        "width": 1000,
-        "height": 760,
-        "resizable": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
@@ -23,6 +15,14 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
+    "fileAssociations": [
+      {
+        "ext": ["mnote"],
+        "name": "marimo notebook",
+        "description": "Portable marimo notebook",
+        "role": "Viewer"
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
