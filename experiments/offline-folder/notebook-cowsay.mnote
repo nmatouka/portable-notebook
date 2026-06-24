@@ -1,0 +1,32 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo",
+#     "cowsay",
+# ]
+# ///
+
+import marimo
+
+__generated_with = "0.23.10"
+app = marimo.App(width="medium")
+
+
+@app.cell
+def _():
+    import marimo as mo
+    return (mo,)
+
+
+@app.cell
+def _(mo):
+    # cowsay is a tiny pure-Python package that is NOT in the baked wheel set,
+    # so opening this exercises tier-2/tier-3 resolution.
+    import cowsay
+    out = cowsay.get_output_string("cow", "OFFLINE-COWSAY-OK")
+    mo.md("```\n" + out + "\n```")
+    return
+
+
+if __name__ == "__main__":
+    app.run()

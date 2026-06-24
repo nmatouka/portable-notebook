@@ -96,6 +96,24 @@ The thumb is `span[role="slider"]` inside the `<marimo-slider>` web component's 
 
 ---
 
+## Package resolution (derisk for spec §5)
+
+How does a notebook use a package that **isn't** baked in?
+
+- For a non-baked dep, marimo-wasm uses **micropip → the PyPI Simple API**: `pypi.org/simple/<pkg>/`, then `<wheel>.metadata`, then the wheel from `files.pythonhosted.org` (observed with a `cowsay` notebook, online).
+- **micropip checks the Pyodide lock first.** Adding a package to the served `pyodide-lock.json` with a locally-available wheel makes micropip install it from there — **no PyPI query**. Verified: the `cowsay` notebook ran **offline** (0 external requests) once `cowsay` was added to the lock with a local wheel.
+
+So the resolver is the same dynamic-serving trick used for `index.html`, applied to the lock:
+
+> On open, the player resolves the notebook's declared deps; for any not already baked, it makes the wheel available locally and **adds a lock entry** pointing at it. micropip loads everything locally. The webview never touches PyPI (consistent with the egress-blocking CSP) — only the Rust backend may fetch.
+
+**Three tiers** (spec §5), landing in one shared, version-keyed wheel cache:
+1. **Baked** — already in the frontend's lock. Offline. *(works today)*
+2. **Bundled in the `.mnote`** — `.mnote` becomes a zip (`notebook.py` + `wheels/` + a `manifest.json` of lock entries); the player merges them in. Offline, no download; the author resolves the closure at authoring time.
+3. **Fetched on demand** — the Rust backend downloads the wheel from PyPI once, caches, serves it via `mnote://`, gated by a one-time confirmation. Online only for the first open.
+
+Tier-1 works today; tiers 2–3 are the implementation ahead. Fixtures: `notebook-cowsay.mnote`, `pkg-probe.mjs`.
+
 ## Carry-forward for later steps
 - **Version floor:** the runtime targets bleeding-edge **Python 3.14 / Pyodide v314**. Track as an aggressive minimum.
 - **Portability of the fix:** the `${self.location.origin}` rewrite already works for any origin, so Step 3's `app://` protocol should need no change to the vendoring — only a handler that serves `/_vendor/...` with correct MIME.
