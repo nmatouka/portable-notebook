@@ -28,15 +28,24 @@ const LOCK_PATH: &str = "_vendor/wasm.marimo.app/pyodide-lock.json";
 // origin. `connect-src 'self'` blocks network egress from BOTH the document and
 // the Pyodide worker (verified). Pyodide needs 'wasm-unsafe-eval'; marimo's
 // bootstrap needs 'unsafe-inline'; JS eval is not required. Sent on every response.
-const CSP: &str = "default-src 'self' mnote://localhost; \
-script-src 'self' mnote://localhost 'unsafe-inline' 'wasm-unsafe-eval'; \
-style-src 'self' mnote://localhost 'unsafe-inline'; \
-img-src 'self' mnote://localhost data: blob:; \
-font-src 'self' mnote://localhost data:; \
-connect-src 'self' mnote://localhost; \
-worker-src 'self' mnote://localhost blob:; \
-child-src 'self' mnote://localhost blob:; \
+// `'self'` resolves to whatever origin the custom protocol has on this engine
+// (mnote://localhost on WebKit, http://mnote.localhost on WebView2), so the policy
+// is origin-agnostic. connect-src 'self' blocks egress; the rest lets Pyodide run.
+const CSP: &str = "default-src 'self'; \
+script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; \
+style-src 'self' 'unsafe-inline'; \
+img-src 'self' data: blob:; \
+font-src 'self' data:; \
+connect-src 'self'; \
+worker-src 'self' blob:; \
+child-src 'self' blob:; \
 object-src 'none'; base-uri 'self'";
+
+// Tauri serves a custom protocol under different origins per webview engine.
+#[cfg(target_os = "windows")]
+const WINDOW_URL: &str = "http://mnote.localhost/";
+#[cfg(not(target_os = "windows"))]
+const WINDOW_URL: &str = "mnote://localhost/";
 
 /// The currently-open document: notebook source + any wheels bundled in the .mnote.
 #[derive(Default)]
@@ -101,9 +110,11 @@ fn parse_mnote(bytes: Vec<u8>) -> Doc {
                     .and_then(|v| v.as_str())
                     .map(|s| s.rsplit('/').next().unwrap_or(s).to_string())
                     .unwrap_or_default();
+                // Root-relative so it resolves against packageBaseUrl's origin on
+                // either engine (new URL("/_pkg/x", "<origin>/_vendor/.../full/")).
                 obj.insert(
                     "file_name".into(),
-                    serde_json::Value::String(format!("mnote://localhost/_pkg/{base}")),
+                    serde_json::Value::String(format!("/_pkg/{base}")),
                 );
             }
             doc.extra_packages.insert(name, entry);
@@ -298,7 +309,24 @@ fn main() {
         ..Default::default()
     };
 
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+
+    // Windows/Linux deliver a double-clicked file to a NEW process; forward it to
+    // the already-running instance and focus it. (No-op on macOS.)
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(path) = argv.get(1) {
+                load_file(app, path);
+            }
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.set_focus();
+            }
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .manage(Current(Mutex::new(default_doc)))
         .register_uri_scheme_protocol("mnote", |ctx, req| {
@@ -363,7 +391,7 @@ fn main() {
             WebviewWindowBuilder::new(
                 app,
                 "main",
-                WebviewUrl::CustomProtocol("mnote://localhost/".parse().unwrap()),
+                WebviewUrl::CustomProtocol(WINDOW_URL.parse().unwrap()),
             )
             .title("mnote Player")
             .inner_size(1000.0, 760.0)

@@ -19,3 +19,8 @@ zip = "2"
 sha2 = "0.10"
 ureq = { version = "2", features = ["json"] }
 tauri-plugin-dialog = "2"
+
+# Windows/Linux only: forward a double-clicked file from a 2nd launch to the
+# running instance. macOS is single-instance and uses RunEvent::Opened instead.
+[target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"

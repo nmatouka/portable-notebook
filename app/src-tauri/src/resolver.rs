@@ -161,7 +161,7 @@ fn resolve_one(norm_name: &str, cache: &Path) -> Option<Resolved> {
     let entry = serde_json::json!({
         "name": norm_name,
         "version": version,
-        "file_name": format!("mnote://localhost/_pkg/{filename}"),
+        "file_name": format!("/_pkg/{filename}"),
         "install_dir": "site",
         "package_type": "package",
         "sha256": sha256_hex(&bytes),

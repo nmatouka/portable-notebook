@@ -34,7 +34,7 @@ marimo-wasm boots Pyodide, runs the injected notebook — offline.
 Key points:
 - **One baked runtime plays any notebook.** Injecting the source into `<marimo-code>` server-side avoids re-exporting per file (the [injection mechanism](../experiments/offline-folder/inject.py) was de-risked first).
 - **`mnote://` custom protocol** (Step 3) serves the whole frontend from a compile-time `include_dir!` embed, with correct MIME (incl. `application/wasm`). This also re-confirms Web Workers + streaming WASM work over a custom scheme.
-- The vendored loader base is pinned to `mnote://localhost` (by [sync-frontend.sh](sync-frontend.sh)) so `new URL(wheel, base)` always has a valid absolute base under the custom scheme.
+- The vendored loader uses the **runtime origin** (`${self.location.origin}`) for wheel URLs, so one frontend works under whichever origin Tauri's custom protocol has per engine — `mnote://localhost` on macOS/Linux (WebKit), `http://mnote.localhost` on Windows (WebView2). Verified on WebKit that `self.location.origin` resolves correctly under the custom scheme; the CSP (`'self'`) and the `/_pkg/` lock URLs (root-relative) are likewise origin-agnostic. The only per-platform value is the window's start URL (a `cfg` constant in `main.rs`).
 - **Package resolution (spec §5) — all three tiers.** Tier 1 = baked wheels. **Tier 2** = a `.mnote` zip carries pure-Python wheels, merged into the served lock and served from `/_pkg/`. **Tier 3** = for a declared dep that's neither baked nor bundled, the *Rust backend* (`resolver.rs`) resolves the pure-Python closure from PyPI, downloads the wheels once **behind a one-time confirmation dialog**, and caches them in `app_cache_dir/mnote-wheels/` — so the next open is offline. micropip checks the lock before the network, which is what makes all of this work; the webview itself never touches PyPI (the CSP forbids it). Resolution runs on a **background thread** — a blocking dialog on the main/event-loop thread deadlocks the webview.
 
 ## Layout
@@ -85,7 +85,7 @@ A `.mnote` carries **untrusted code** (the recipient didn't write it) and is del
 Test fixture: [notebook-egress.mnote](../experiments/offline-folder/notebook-egress.mnote); CSP iteration used [csp-server.py](../experiments/offline-folder/csp-server.py).
 
 ## Not done yet
-- Windows/WebView2 build + the registry-based file association + single-instance forwarding.
+- Windows **runtime** verification + installers. The code is cross-platform (origin-agnostic custom protocol; `tauri-plugin-single-instance` forwards a double-clicked file to the running instance on Windows/Linux) and [CI](../.github/workflows/ci.yml) compiles it on `windows-latest`, but it hasn't been *run* on WebView2 yet, and CI is compile-only (no installer bundling). The `.mnote` registry association comes from Tauri's `bundle.fileAssociations` (already configured).
 - CSP hardening (nonces instead of `'unsafe-inline'`); graceful handling of network-blocked notebooks (vs hang).
 - Tier-3 polish: a "preparing — downloading N packages" progress indicator (spec §5); version solving; non-pure-Python (Pyodide-built) wheels.
 - Cosmetic: WebKit font 404s; the title bar doesn't reflect the file on *cold* open (only when opened into an already-running window).
