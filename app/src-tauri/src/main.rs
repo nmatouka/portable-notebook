@@ -9,12 +9,15 @@
 // pyodide-lock.json and served from /_pkg/ — so an exotic-but-pure-Python package
 // loads fully offline, with the webview never touching PyPI.
 
+mod resolver;
+
 use include_dir::{include_dir, Dir};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::{http::Response, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 // Embedded at compile time → identical behavior in dev and bundled.
 static FRONTEND: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend");
@@ -161,21 +164,132 @@ fn merged_lock(raw: &str, extra: &serde_json::Map<String, serde_json::Value>) ->
     }
 }
 
+/// Package names whose wheel is physically vendored in the embedded frontend, so
+/// they load offline with no tier-2/3 help. (The lock lists ~373 names but only a
+/// handful of wheels are actually shipped.)
+fn baked_names() -> &'static HashSet<String> {
+    static BAKED: OnceLock<HashSet<String>> = OnceLock::new();
+    BAKED.get_or_init(|| {
+        fn walk(dir: &Dir, out: &mut HashSet<String>) {
+            for f in dir.files() {
+                if let Some(n) = f.path().file_name().and_then(|s| s.to_str()) {
+                    if n.ends_with(".whl") {
+                        out.insert(n.to_string());
+                    }
+                }
+            }
+            for d in dir.dirs() {
+                walk(d, out);
+            }
+        }
+        let mut wheels = HashSet::new();
+        walk(&FRONTEND, &mut wheels);
+
+        let mut baked = HashSet::new();
+        let raw = FRONTEND.get_file(LOCK_PATH).and_then(|f| f.contents_utf8()).unwrap_or("{}");
+        if let Ok(serde_json::Value::Object(pkgs)) = serde_json::from_str::<serde_json::Value>(raw)
+            .map(|v| v.get("packages").cloned().unwrap_or_default())
+        {
+            for (name, e) in pkgs {
+                let base = e
+                    .get("file_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("")
+                    .split('?')
+                    .next()
+                    .unwrap_or("");
+                if wheels.contains(base) {
+                    baked.insert(resolver::norm(&name));
+                }
+            }
+        }
+        baked
+    })
+}
+
+/// Fill `doc` with wheels for any declared dependency that is neither baked nor
+/// already bundled — downloading the pure-Python closure from PyPI once (gated +
+/// cached) if needed. The webview never fetches; only this backend does (spec §7).
+fn resolve_missing(app: &tauri::AppHandle, doc: &mut Doc) {
+    let bundled: HashSet<String> = doc.extra_packages.keys().map(|k| resolver::norm(k)).collect();
+    let missing: Vec<String> = resolver::pep723_deps(&doc.source)
+        .into_iter()
+        .filter(|d| {
+            let n = resolver::norm(d);
+            !baked_names().contains(&n) && !bundled.contains(&n)
+        })
+        .collect();
+    if missing.is_empty() {
+        return;
+    }
+
+    let cache = app
+        .path()
+        .app_cache_dir()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("mnote-wheels");
+
+    // Tier-3 gate: an untrusted file is driving a download — confirm before any
+    // network fetch. Already-cached packages need no prompt (offline reuse).
+    let need_net: Vec<&String> = missing
+        .iter()
+        .filter(|m| !resolver::is_cached(&resolver::norm(m), &cache))
+        .collect();
+    if !need_net.is_empty() {
+        let list = need_net.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+        // Debug-only test hook so the download path can be exercised headlessly;
+        // release builds always prompt.
+        let auto = cfg!(debug_assertions) && std::env::var_os("MNOTE_AUTO_DOWNLOAD").is_some();
+        let ok = auto
+            || app
+                .dialog()
+                .message(format!(
+                    "This notebook needs {} package(s) that aren't bundled:\n\n{list}\n\nDownload them once from PyPI? They'll be cached for offline use.",
+                    need_net.len()
+                ))
+                .title("Download packages?")
+                .buttons(MessageDialogButtons::OkCancel)
+                .blocking_show();
+        if !ok {
+            return; // declined — the notebook may fail to import; the user's choice
+        }
+    }
+
+    for r in resolver::resolve_closure(&missing, &cache, baked_names()) {
+        doc.wheels.insert(r.filename, r.bytes);
+        doc.extra_packages.insert(r.name, r.entry);
+    }
+}
+
 /// Read a .mnote from disk, make it current, and reload the window.
+///
+/// Runs on a background thread: resolve_missing() may show a modal dialog and
+/// block on a network download, and a blocking dialog on the main (event-loop)
+/// thread deadlocks the webview.
 fn load_file(app: &tauri::AppHandle, path: &str) {
-    if let Ok(bytes) = std::fs::read(path) {
-        *app.state::<Current>().0.lock().unwrap() = parse_mnote(bytes);
+    let app = app.clone();
+    let path = path.to_string();
+    std::thread::spawn(move || {
+        let Ok(bytes) = std::fs::read(&path) else {
+            return;
+        };
+        let mut doc = parse_mnote(bytes);
+        resolve_missing(&app, &mut doc);
+        *app.state::<Current>().0.lock().unwrap() = doc;
         if let Some(win) = app.get_webview_window("main") {
             // Show the opened file in the native title bar — a non-spoofable
             // affordance for which file's (untrusted) content is running.
-            let name = std::path::Path::new(path)
+            let name = std::path::Path::new(&path)
                 .file_name()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "notebook".into());
             let _ = win.set_title(&format!("{name} — mnote Player"));
             let _ = win.eval("window.location.reload()");
         }
-    }
+    });
 }
 
 fn main() {
@@ -185,6 +299,7 @@ fn main() {
     };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(Current(Mutex::new(default_doc)))
         .register_uri_scheme_protocol("mnote", |ctx, req| {
             let app = ctx.app_handle();

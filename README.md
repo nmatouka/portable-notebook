@@ -30,7 +30,7 @@ The spec stages the work to derisk the genuinely uncertain parts first:
 2. Wrap the working folder in a Tauri shell. *(✅ done)*
 3. Replace static serving with a custom secure protocol. *(✅ done — `mnote://`)*
 4. Add the file association + open-file handler (loads whichever notebook was double-clicked). *(✅ done — verified on macOS)*
-5. Polish — base wheel set, 3-tier resolver + shared cache, graceful fallback, state indicator. *(next)*
+5. Polish — base wheel set ✅, **3-tier resolver + shared cache ✅**, security model ✅. Remaining: download-progress indicator, CSP hardening, Windows build.
 
 ## Status
 
@@ -39,7 +39,7 @@ The spec stages the work to derisk the genuinely uncertain parts first:
 - ✅ Step 2 — wrapped in a [Tauri shell](app/): the built `.app` opens the notebook in a native WebKit window, numpy computes, slider drives live recompute — all offline.
 - ✅ Steps 3 & 4 — the [app](app/) serves the embedded frontend over a dedicated **`mnote://` custom protocol** and **opens a double-clicked `.mnote`** by injecting its source into the runtime. Verified on macOS: bare launch shows a default notebook; double-click (or open) a `.mnote` and it runs live (e.g. a Celsius→Fahrenheit notebook computing `68.0 °F`). **This is the core vision working end-to-end.**
 - ✅ Step 5 (security model, §7) — the player **denies notebook network egress** via a strict CSP (`connect-src 'self'`), verified to block exfiltration from both the document and the Pyodide worker. Runtime is sandboxed (Pyodide/WASM), serving is read-only/local, the notebook gets no host bridge, and the title bar shows the open file. See the [app security model](app/README.md#security-model-spec-7).
-- ✅ Step 5 (package resolution, §5) — **tiers 1–2**: a `.mnote` can bundle pure-Python wheels (built with [`tools/mnote-pack.py`](tools/mnote-pack.py)), which the player merges into the served lock and serves locally over `mnote://`. Verified offline: a `cowsay` notebook runs from its bundled wheel under the egress-blocking CSP (micropip checks the lock before PyPI).
-- ⏭️ Next: tier-3 (on-demand PyPI download, cached + confirmation-gated), CSP nonce hardening, and a Windows/WebView2 build.
+- ✅ Step 5 (package resolution, §5) — **all three tiers**: baked, bundled in the `.mnote` ([`tools/mnote-pack.py`](tools/mnote-pack.py)), and **on-demand PyPI download** by the Rust backend (gated by a one-time confirmation, cached for offline reuse). Verified on macOS: a `cowsay` notebook downloads its wheel on first open (sha256-checked) and runs from cache offline thereafter; the webview never touches PyPI (the CSP forbids it).
+- ⏭️ Next: CSP nonce hardening, a download-progress indicator, and a **Windows/WebView2 build** (the second engine).
 
 The product name is still undecided. The file extension is **`.mnote`** (finalized 2026-06-23) — a config value (file-association manifest + a constant in the player), not an architectural choice.

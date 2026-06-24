@@ -16,3 +16,6 @@ include_dir = "0.7"
 percent-encoding = "2"
 url = "2"
 zip = "2"
+sha2 = "0.10"
+ureq = { version = "2", features = ["json"] }
+tauri-plugin-dialog = "2"

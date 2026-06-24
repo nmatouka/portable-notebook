@@ -35,7 +35,7 @@ Key points:
 - **One baked runtime plays any notebook.** Injecting the source into `<marimo-code>` server-side avoids re-exporting per file (the [injection mechanism](../experiments/offline-folder/inject.py) was de-risked first).
 - **`mnote://` custom protocol** (Step 3) serves the whole frontend from a compile-time `include_dir!` embed, with correct MIME (incl. `application/wasm`). This also re-confirms Web Workers + streaming WASM work over a custom scheme.
 - The vendored loader base is pinned to `mnote://localhost` (by [sync-frontend.sh](sync-frontend.sh)) so `new URL(wheel, base)` always has a valid absolute base under the custom scheme.
-- **Package resolution (spec §5).** Tier 1 (baked wheels) works out of the box. **Tier 2** is implemented: a `.mnote` zip carries extra pure-Python wheels, which the player merges into the served lock and serves from `/_pkg/`, so micropip installs them locally — offline, no PyPI. micropip checks the lock before the network, which is what makes this work. Tier 3 (on-demand download by the Rust backend, gated) is future work.
+- **Package resolution (spec §5) — all three tiers.** Tier 1 = baked wheels. **Tier 2** = a `.mnote` zip carries pure-Python wheels, merged into the served lock and served from `/_pkg/`. **Tier 3** = for a declared dep that's neither baked nor bundled, the *Rust backend* (`resolver.rs`) resolves the pure-Python closure from PyPI, downloads the wheels once **behind a one-time confirmation dialog**, and caches them in `app_cache_dir/mnote-wheels/` — so the next open is offline. micropip checks the lock before the network, which is what makes all of this work; the webview itself never touches PyPI (the CSP forbids it). Resolution runs on a **background thread** — a blocking dialog on the main/event-loop thread deadlocks the webview.
 
 ## Layout
 
@@ -85,7 +85,9 @@ A `.mnote` carries **untrusted code** (the recipient didn't write it) and is del
 Test fixture: [notebook-egress.mnote](../experiments/offline-folder/notebook-egress.mnote); CSP iteration used [csp-server.py](../experiments/offline-folder/csp-server.py).
 
 ## Not done yet
-- **Tier-3** package resolution: the Rust backend downloads a missing wheel from PyPI once, caches it (shared, version-keyed), and serves it via `mnote://`, gated by a one-time confirmation. Tiers 1–2 are done.
 - Windows/WebView2 build + the registry-based file association + single-instance forwarding.
 - CSP hardening (nonces instead of `'unsafe-inline'`); graceful handling of network-blocked notebooks (vs hang).
+- Tier-3 polish: a "preparing — downloading N packages" progress indicator (spec §5); version solving; non-pure-Python (Pyodide-built) wheels.
 - Cosmetic: WebKit font 404s; the title bar doesn't reflect the file on *cold* open (only when opened into an already-running window).
+
+> A debug-only env hook `MNOTE_AUTO_DOWNLOAD=1` skips the tier-3 prompt so the download path can be exercised headlessly; release builds always prompt.
