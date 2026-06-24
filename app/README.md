@@ -6,7 +6,7 @@ Opens a double-clicked **`.mnote`** file as a live, interactive marimo notebook 
 
 ## How it works
 
-A `.mnote` is simply a **marimo `.py` notebook** (UTF-8 source). The player owns the runtime; the file is just the payload.
+A `.mnote` is either a bare **marimo `.py` notebook**, or a **zip** bundling `notebook.py` + `wheels/` + a `manifest.json` of lock entries (for pure-Python packages beyond the baked set — spec §5 tier 2). The player owns the runtime; the file is just the payload. Build a bundle with [`tools/mnote-pack.py`](../tools/mnote-pack.py).
 
 ```
 double-click foo.mnote
@@ -22,8 +22,10 @@ window loads  mnote://localhost/
         │
         ▼
 custom-protocol handler serves the EMBEDDED frontend:
-  • index.html → inject current notebook source into <marimo-code> (percent-encoded)
-  • /assets/*, /_vendor/*  → embedded bytes (Pyodide, wheels, marimo frontend)
+  • index.html        → inject current notebook source into <marimo-code> (percent-encoded)
+  • pyodide-lock.json → merge in the .mnote's bundled-package entries (tier 2)
+  • /_pkg/*           → wheels bundled in the open .mnote (tier 2)
+  • /assets/*, /_vendor/* → embedded bytes (Pyodide, baked wheels, marimo frontend)
         │
         ▼
 marimo-wasm boots Pyodide, runs the injected notebook — offline.
@@ -33,6 +35,7 @@ Key points:
 - **One baked runtime plays any notebook.** Injecting the source into `<marimo-code>` server-side avoids re-exporting per file (the [injection mechanism](../experiments/offline-folder/inject.py) was de-risked first).
 - **`mnote://` custom protocol** (Step 3) serves the whole frontend from a compile-time `include_dir!` embed, with correct MIME (incl. `application/wasm`). This also re-confirms Web Workers + streaming WASM work over a custom scheme.
 - The vendored loader base is pinned to `mnote://localhost` (by [sync-frontend.sh](sync-frontend.sh)) so `new URL(wheel, base)` always has a valid absolute base under the custom scheme.
+- **Package resolution (spec §5).** Tier 1 (baked wheels) works out of the box. **Tier 2** is implemented: a `.mnote` zip carries extra pure-Python wheels, which the player merges into the served lock and serves from `/_pkg/`, so micropip installs them locally — offline, no PyPI. micropip checks the lock before the network, which is what makes this work. Tier 3 (on-demand download by the Rust backend, gated) is future work.
 
 ## Layout
 
@@ -82,7 +85,7 @@ A `.mnote` carries **untrusted code** (the recipient didn't write it) and is del
 Test fixture: [notebook-egress.mnote](../experiments/offline-folder/notebook-egress.mnote); CSP iteration used [csp-server.py](../experiments/offline-folder/csp-server.py).
 
 ## Not done yet
+- **Tier-3** package resolution: the Rust backend downloads a missing wheel from PyPI once, caches it (shared, version-keyed), and serves it via `mnote://`, gated by a one-time confirmation. Tiers 1–2 are done.
 - Windows/WebView2 build + the registry-based file association + single-instance forwarding.
-- Package-resolution tiers / `.mnote` zip container with bundled wheels (spec §5).
 - CSP hardening (nonces instead of `'unsafe-inline'`); graceful handling of network-blocked notebooks (vs hang).
-- Cosmetic: WebKit font 404s (experiment finding #8).
+- Cosmetic: WebKit font 404s; the title bar doesn't reflect the file on *cold* open (only when opened into an already-running window).
