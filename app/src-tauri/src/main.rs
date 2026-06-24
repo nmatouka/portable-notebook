@@ -19,6 +19,22 @@ static FRONTEND: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend");
 // Shown when launched without a file.
 const DEFAULT_NOTEBOOK: &str = include_str!("../../default.mnote");
 
+// Security model (spec §7): notebook code is untrusted (it arrives in files), so
+// confine it to the app origin. `connect-src 'self'` is the load-bearing control —
+// it blocks network egress from BOTH the document and the Pyodide worker, so a
+// hostile notebook cannot exfiltrate (verified in experiment #1). Pyodide needs
+// 'wasm-unsafe-eval'; marimo's bootstrap needs 'unsafe-inline' scripts; JS eval
+// is NOT required. Sent on every response so the worker inherits it too.
+const CSP: &str = "default-src 'self' mnote://localhost; \
+script-src 'self' mnote://localhost 'unsafe-inline' 'wasm-unsafe-eval'; \
+style-src 'self' mnote://localhost 'unsafe-inline'; \
+img-src 'self' mnote://localhost data: blob:; \
+font-src 'self' mnote://localhost data:; \
+connect-src 'self' mnote://localhost; \
+worker-src 'self' mnote://localhost blob:; \
+child-src 'self' mnote://localhost blob:; \
+object-src 'none'; base-uri 'self'";
+
 /// The notebook source currently loaded into the player.
 struct Current(Mutex<String>);
 
@@ -65,6 +81,13 @@ fn load_file(app: &tauri::AppHandle, path: &str) {
     if let Ok(src) = std::fs::read_to_string(path) {
         *app.state::<Current>().0.lock().unwrap() = src;
         if let Some(win) = app.get_webview_window("main") {
+            // Show the opened file in the native title bar — a non-spoofable
+            // affordance for *which* file's (untrusted) content is running.
+            let name = std::path::Path::new(path)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "notebook".into());
+            let _ = win.set_title(&format!("{name} — mnote Player"));
             let _ = win.eval("window.location.reload()");
         }
     }
@@ -82,6 +105,12 @@ fn main() {
                 path.trim_start_matches('/')
             };
 
+            // Defensive: the frontend is an embedded virtual tree (no real FS to
+            // escape to), but reject traversal anyway.
+            if rel.contains("..") {
+                return Response::builder().status(403).body(Vec::new()).unwrap();
+            }
+
             if rel == "index.html" {
                 let tmpl = FRONTEND
                     .get_file("index.html")
@@ -90,6 +119,7 @@ fn main() {
                 let src = app.state::<Current>().0.lock().unwrap().clone();
                 return Response::builder()
                     .header("Content-Type", "text/html")
+                    .header("Content-Security-Policy", CSP)
                     .body(inject(tmpl, &src).into_bytes())
                     .unwrap();
             }
@@ -97,6 +127,7 @@ fn main() {
             match FRONTEND.get_file(rel) {
                 Some(f) => Response::builder()
                     .header("Content-Type", mime_for(rel))
+                    .header("Content-Security-Policy", CSP)
                     .body(f.contents().to_vec())
                     .unwrap(),
                 None => Response::builder().status(404).body(Vec::new()).unwrap(),

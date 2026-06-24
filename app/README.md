@@ -62,8 +62,27 @@ npx @tauri-apps/cli@2 build --debug --bundles app   # build mnote Player.app
 open "target/debug/bundle/macos/mnote Player.app" --args /path/to/foo.mnote
 ```
 
+## Security model (spec §7)
+
+A `.mnote` carries **untrusted code** (the recipient didn't write it) and is deliberately designed to look like a document — so network egress is denied by default.
+
+**Enforced**
+- **No network egress** — the load-bearing control. Every response from the `mnote://` handler carries a strict CSP whose key directive is `connect-src 'self'`, so a hostile notebook cannot `fetch()` out. Verified against this exact policy in the browser (experiment #1): exfiltration is refused from **both** the document and the Pyodide **worker** (where the notebook's Python runs). The legit runtime is unaffected — `'wasm-unsafe-eval'` (Pyodide) + `'unsafe-inline'` scripts (marimo bootstrap); JS `eval` is not needed — and the default notebook still computes under the CSP in the app.
+- **Sandboxed runtime** — Pyodide/WASM: no real filesystem, no subprocesses, no threads.
+- **Read-only, local-only serving** — the handler returns only bytes from the embedded frontend, with a `..` traversal guard; it never touches disk or network.
+- **No host bridge** — the notebook gets only `core:default` Tauri capabilities; it cannot call the Rust backend.
+- **Trust affordance** — the native title bar shows the open file name (`foo.mnote — mnote Player`), which page content cannot spoof.
+
+**Known limitations / deferred**
+- Under WebKit a CSP-blocked fetch can leave the promise *pending*, so a hostile (or network-dependent) notebook may **hang** instead of erroring. No data leaks; the UX is just poor — and notebooks that genuinely need the network aren't a fit for the offline player anyway.
+- `script-src` still allows `'unsafe-inline'` (marimo's baked bootstrap). Hardening to nonces/hashes is future work and doesn't affect egress.
+- When tier-3 package downloads land (spec §5), the **Rust backend** — not the notebook — will fetch them, gated by a one-time confirmation; the webview CSP stays strict.
+- In-content UI spoofing (a notebook drawing fake dialogs) is mitigated only by the title bar.
+
+Test fixture: [notebook-egress.mnote](../experiments/offline-folder/notebook-egress.mnote); CSP iteration used [csp-server.py](../experiments/offline-folder/csp-server.py).
+
 ## Not done yet
 - Windows/WebView2 build + the registry-based file association + single-instance forwarding.
-- Tighten CSP to an explicit `wasm-unsafe-eval` policy (currently disabled).
 - Package-resolution tiers / `.mnote` zip container with bundled wheels (spec §5).
-- Cosmetic: WebKit font 404s (experiment finding #8); window title doesn't reflect the open file.
+- CSP hardening (nonces instead of `'unsafe-inline'`); graceful handling of network-blocked notebooks (vs hang).
+- Cosmetic: WebKit font 404s (experiment finding #8).
