@@ -1,9 +1,9 @@
 # Third-party notices
 
-The [LICENSE](LICENSE) (PolyForm Noncommercial 1.0.0) covers **this project's own
-source**. It does **not** relicense the third-party software the player bundles or
-builds upon — each component remains under its own license, which is generally
-permissive (Apache-2.0 / MIT / BSD / MPL-2.0) and compatible with redistribution.
+The [LICENSE](LICENSE) (GNU GPL v3.0) covers **Carrel's own source**. It does **not**
+relicense the third-party software Carrel bundles or builds upon — each component
+remains under its own license, which is generally permissive (Apache-2.0 / MIT /
+BSD / MPL-2.0) and GPL-compatible (so the combined work can be distributed under GPLv3).
 
 Most of these are **not committed to this repository** — the offline frontend
 (`app/frontend/`) is generated at build time (see `app/sync-frontend.sh`) and

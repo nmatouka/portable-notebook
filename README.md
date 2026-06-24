@@ -54,8 +54,6 @@ A notebook running entirely in the browser via WebAssembly — the same engine t
 
 ## License
 
-This project's own source is **source-available under [PolyForm Noncommercial 1.0.0](LICENSE)** — free to use, modify, and share for any noncommercial purpose; commercial use is not granted.
+Carrel is free software, licensed under the **[GNU General Public License v3.0](LICENSE)**. You may use, study, modify, and redistribute it — **including commercially** — provided that derivative works and distributions are also licensed under GPLv3 and make their source available (copyleft). Copyright © 2026 Carrel authors.
 
-> Note: strictly, a "no commercial use" license is *not* OSI-approved "open source" (the [Open Source Definition](https://opensource.org/osd) forbids field-of-use restrictions). PolyForm Noncommercial is the standard, well-drafted choice for *source-available, noncommercial* software. If you'd rather it be true open source (which allows commercial use), MIT/Apache-2.0 is the swap.
-
-Bundled and built-upon components (marimo, Pyodide, Tauri, Python wheels, …) keep their own — generally permissive — licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Bundled and built-upon components (marimo, Pyodide, Tauri, Python wheels, …) keep their own — generally permissive (Apache-2.0 / MIT / BSD / MPL-2.0), GPL-compatible — licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
