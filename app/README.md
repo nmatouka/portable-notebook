@@ -1,8 +1,8 @@
-# mnote Player (Tauri app)
+# Carrel (Tauri app)
 
 Opens a double-clicked **`.mnote`** file as a live, interactive marimo notebook — fully offline, in a native webview. Built on the vendored offline runtime proven in [experiment #1](../experiments/offline-folder/).
 
-> **Status: Steps 2–4 complete & verified on macOS** ([build plan](../offline-marimo-player-spec.md)). Launch bare → a default notebook; double-click a `.mnote` (or `open -a "mnote Player" file.mnote`) → that notebook opens live. All three paths verified by screenshot: bare launch (`$1,628.89`), open-in-running-app, and cold double-click via the file association. Windows/WebView2 not yet built.
+> **Status: Steps 2–4 complete & verified on macOS** ([build plan](../offline-marimo-player-spec.md)). Launch bare → a default notebook; double-click a `.mnote` (or `open -a "Carrel" file.mnote`) → that notebook opens live. All three paths verified by screenshot: bare launch (`$1,628.89`), open-in-running-app, and cold double-click via the file association. Windows/WebView2 not yet built.
 
 ## How it works
 
@@ -61,8 +61,8 @@ Requires the Rust toolchain (`rustup`) and Xcode CLT.
 ./sync-frontend.sh                        # copy + pin it into frontend/ (embedded at build)
 
 cd src-tauri && cargo run                 # dev run (opens default notebook)
-npx @tauri-apps/cli@2 build --debug --bundles app   # build mnote Player.app
-open "target/debug/bundle/macos/mnote Player.app" --args /path/to/foo.mnote
+npx @tauri-apps/cli@2 build --debug --bundles app   # build Carrel.app
+open "target/debug/bundle/macos/Carrel.app" --args /path/to/foo.mnote
 ```
 
 ## Security model (spec §7)
@@ -74,7 +74,7 @@ A `.mnote` carries **untrusted code** (the recipient didn't write it) and is del
 - **Sandboxed runtime** — Pyodide/WASM: no real filesystem, no subprocesses, no threads.
 - **Read-only, local-only serving** — the handler returns only bytes from the embedded frontend, with a `..` traversal guard; it never touches disk or network.
 - **No host bridge** — the notebook gets only `core:default` Tauri capabilities; it cannot call the Rust backend.
-- **Trust affordance** — the native title bar shows the open file name (`foo.mnote — mnote Player`), which page content cannot spoof.
+- **Trust affordance** — the native title bar shows the open file name (`foo.mnote — Carrel`), which page content cannot spoof.
 
 **Known limitations / deferred**
 - Under WebKit a CSP-blocked fetch can leave the promise *pending*, so a hostile (or network-dependent) notebook may **hang** instead of erroring. No data leaks; the UX is just poor — and notebooks that genuinely need the network aren't a fit for the offline player anyway.

@@ -1,6 +1,6 @@
 # Offline Marimo Notebook Player — Build Specification
 
-*(Working title — the product name is still undecided. The file extension is **`.mnote`**, finalized 2026-06-23.)*
+*(The application is named **Carrel** (chosen 2026-06-24). The file extension is **`.mnote`** (finalized 2026-06-23). This doc predates both names — it uses "the player"/`.EXT` historically.)*
 
 **A desktop app that opens marimo notebooks by double-click, fully offline, with live interactivity.**
 

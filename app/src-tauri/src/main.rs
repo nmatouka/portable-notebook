@@ -98,9 +98,9 @@ struct Doc {
 /// Native title bar text: the open file (non-spoofable), or the product name.
 fn window_title(name: &str) -> String {
     if name.is_empty() {
-        "mnote Player".to_string()
+        "Carrel".to_string()
     } else {
-        format!("{name} — mnote Player")
+        format!("{name} — Carrel")
     }
 }
 struct Current(Mutex<Doc>);
@@ -320,7 +320,7 @@ fn resolve_missing(app: &tauri::AppHandle, doc: &mut Doc) {
     if !need_net.is_empty() {
         if let Some(win) = app.get_webview_window("main") {
             let _ = win.set_title(&format!(
-                "Downloading {} package(s)… — mnote Player",
+                "Downloading {} package(s)… — Carrel",
                 need_net.len()
             ));
         }
@@ -466,13 +466,13 @@ fn main() {
                 "main",
                 WebviewUrl::CustomProtocol(WINDOW_URL.parse().unwrap()),
             )
-            .title("mnote Player")
+            .title("Carrel")
             .inner_size(1000.0, 760.0)
             .build()?;
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building the mnote player")
+        .expect("error while building Carrel")
         .run(|_app, _event| {
             // macOS delivers double-clicked files as an Apple Event → RunEvent::Opened.
             #[cfg(target_os = "macos")]

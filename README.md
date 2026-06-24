@@ -1,12 +1,12 @@
-# Portable Notebook
+# Carrel
 
 [![CI](https://github.com/nmatouka/portable-notebook/actions/workflows/ci.yml/badge.svg)](https://github.com/nmatouka/portable-notebook/actions/workflows/ci.yml)
 
-A desktop app that opens [marimo](https://marimo.io) notebooks by **double-click — fully offline, with live interactivity**. No terminal, no hosting, no internet required.
+**Carrel** opens [marimo](https://marimo.io) notebooks by **double-click — fully offline, with live interactivity**. No terminal, no hosting, no internet required.
 
-An author bundles a notebook as a single file; a recipient installs this player **once**, then double-clicks any such file and it runs live and offline (sliders, inputs, and recomputation all work). The runtime lives in the installed app; the file is just the portable notebook payload — the same bargain as Wolfram's old CDF Player, but built on open standards (HTML / WASM / Python via [Pyodide](https://pyodide.org)) instead of a proprietary engine.
+An author bundles a notebook as a single `.mnote` file; a recipient installs Carrel **once**, then double-clicks any `.mnote` and it runs live and offline (sliders, inputs, and recomputation all work). The runtime lives in the installed app; the file is just the portable payload — the same bargain as Wolfram's old CDF Player, but built on open standards (HTML / WASM / Python via [Pyodide](https://pyodide.org)) instead of a proprietary engine.
 
-> **Status: early. No app yet.** The repo currently holds the build specification and the first derisking experiment. See below.
+> **Try it:** a notebook running entirely in your browser via WebAssembly — the engine Carrel makes work *offline* — is live at **https://nmatouka.github.io/portable-notebook/**. The desktop app and full status are below.
 
 ## How it works (the short version)
 

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "mnote Player",
+  "productName": "Carrel",
   "version": "0.1.0",
-  "identifier": "app.mnote.player",
+  "identifier": "app.carrel",
   "build": {
     "frontendDist": "../placeholder-dist"
   },
