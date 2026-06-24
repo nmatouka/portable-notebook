@@ -1,2 +1,4 @@
 # Shell scripts must stay LF so they run under Windows git-bash in CI.
 *.sh text eol=lf
+# Data files read by those scripts must be LF too (curl rejects URLs with a CR).
+external-urls.txt text eol=lf

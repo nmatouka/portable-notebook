@@ -22,6 +22,7 @@ URLS=external-urls.txt
 echo "==> mirroring $(grep -c . "$URLS") URLs into $VENDOR/"
 rm -rf "$VENDOR"; mkdir -p "$VENDOR"
 while IFS= read -r url; do
+  url="${url%$'\r'}"                    # strip CR if checked out CRLF (Windows)
   [ -z "$url" ] && continue
   noscheme="${url#http*://}"
   host="${noscheme%%/*}"
