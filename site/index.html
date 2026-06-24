@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portable Notebook — open marimo notebooks offline, by double-click</title>
+<meta name="description" content="A desktop app that opens marimo notebooks by double-click — fully offline, with live interactivity. No terminal, no hosting, no internet required.">
+<style>
+  :root {
+    --bg: #fbfbfd; --fg: #1a1a1f; --muted: #5b5b6b; --line: #e6e6ee;
+    --accent: #4f46e5; --accent-soft: #eef0fe; --card: #ffffff; --code: #f4f4f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0e0e12; --fg:#ececf2; --muted:#9a9aaa; --line:#26262f;
+            --accent:#8b88f6; --accent-soft:#191934; --card:#16161c; --code:#16161c; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+  code { background: var(--code); border: 1px solid var(--line); border-radius: 5px; padding: .1em .4em; font-size: .9em; }
+
+  header { padding: 88px 0 56px; text-align: center; }
+  .badge { display: inline-block; font-size: 13px; color: var(--accent);
+    background: var(--accent-soft); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; margin-bottom: 22px; }
+  h1 { font-size: clamp(34px, 6vw, 52px); line-height: 1.08; letter-spacing: -.02em; margin: 0 0 18px; }
+  .tagline { font-size: clamp(17px, 2.5vw, 21px); color: var(--muted); max-width: 620px; margin: 0 auto 32px; }
+  .cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .btn { display: inline-block; padding: 12px 22px; border-radius: 10px; font-weight: 600; border: 1px solid var(--line); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.primary:hover { text-decoration: none; filter: brightness(1.05); }
+  .btn.ghost:hover { text-decoration: none; border-color: var(--accent); }
+
+  section { padding: 40px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 22px; letter-spacing: -.01em; margin: 0 0 18px; }
+  .lead { color: var(--muted); }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 16px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+  ol.flow { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  ol.flow li { position: relative; padding-left: 44px; color: var(--muted); }
+  ol.flow li b { color: var(--fg); }
+  ol.flow li::before { counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: -2px; width: 28px; height: 28px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--accent); border: 1px solid var(--line);
+    display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+
+  footer { padding: 40px 0 64px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; text-align: center; }
+  .note { font-size: 13.5px; color: var(--muted); margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="badge">offline · open standards · no install for the runtime</span>
+    <h1>Open notebooks by double-click — fully offline.</h1>
+    <p class="tagline">
+      Portable Notebook is a desktop app that opens
+      <a href="https://marimo.io">marimo</a> notebooks as live, interactive documents —
+      no terminal, no hosting, no internet. The runtime lives in the app; a notebook
+      file is just the portable payload.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="./demo/">▶ Try a live notebook</a>
+      <a class="btn ghost" href="https://github.com/nmatouka/portable-notebook">View source on GitHub</a>
+    </div>
+    <p class="note">The demo runs entirely in your browser via WebAssembly — the same engine the desktop app makes work <em>offline</em>.</p>
+  </header>
+
+  <section>
+    <h2>What it is</h2>
+    <p class="lead">
+      An author bundles a notebook as a single <code>.mnote</code> file. A recipient installs the
+      player <b>once</b>, then double-clicks any <code>.mnote</code> and it opens live and offline —
+      sliders, inputs, and recomputation all work. It's the same bargain as Wolfram's old CDF Player,
+      but built on open standards (HTML / WebAssembly / Python via
+      <a href="https://pyodide.org">Pyodide</a>) instead of a proprietary engine.
+    </p>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <ol class="flow">
+      <li>Double-click a <code>.mnote</code> (a marimo <code>.py</code>, optionally zipped with its wheels).</li>
+      <li>The app serves its <b>embedded</b> WASM runtime over a custom secure protocol and injects the notebook's code.</li>
+      <li>Pyodide boots and runs the notebook — <b>with no network</b>. Sliders and inputs recompute live.</li>
+      <li>The webview is locked down: a notebook <b>cannot phone home</b> (strict CSP); only the app may fetch a missing package, once, with your OK.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Packages, three ways</h2>
+    <table>
+      <tr><th>Tier</th><th>Source</th><th>Network</th></tr>
+      <tr><td>Baked</td><td>shipped in the player</td><td>none</td></tr>
+      <tr><td>Bundled</td><td>wheels inside the <code>.mnote</code></td><td>none</td></tr>
+      <tr><td>Fetched</td><td>downloaded from PyPI by the app, cached</td><td>first open only, with confirmation</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Status</h2>
+    <p class="lead">
+      Built and verified end-to-end on <b>macOS</b>; the code is cross-platform and
+      <a href="https://github.com/nmatouka/portable-notebook/actions/workflows/ci.yml">compiles on Windows in CI</a>.
+      Build from source — see the <a href="https://github.com/nmatouka/portable-notebook">repository</a> and
+      <a href="https://github.com/nmatouka/portable-notebook/blob/main/offline-marimo-player-spec.md">build spec</a>.
+    </p>
+  </section>
+
+  <footer>
+    <p>
+      Source-available under <a href="https://github.com/nmatouka/portable-notebook/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.
+      Built on <a href="https://marimo.io">marimo</a>, <a href="https://pyodide.org">Pyodide</a>, and <a href="https://tauri.app">Tauri</a>.
+    </p>
+  </footer>
+
+</div>
+</body>
+</html>

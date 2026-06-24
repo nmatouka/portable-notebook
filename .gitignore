@@ -25,3 +25,13 @@ experiments/offline-folder/shot-*.png
 app/frontend/
 app/src-tauri/target/
 app/src-tauri/gen/
+
+# GitHub Pages: live notebook demo is exported by the pages workflow
+site/demo/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+*.log

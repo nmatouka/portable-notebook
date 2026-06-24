@@ -47,3 +47,15 @@ The spec stages the work to derisk the genuinely uncertain parts first:
 - ⏭️ Remaining: Windows *runtime* verification + installer bundling (need a Windows machine); minor items (tier-3 version solving, WebKit font 404s).
 
 The product name is still undecided. The file extension is **`.mnote`** (finalized 2026-06-23) — a config value (file-association manifest + a constant in the player), not an architectural choice.
+
+## Live demo
+
+A notebook running entirely in the browser via WebAssembly — the same engine the desktop player makes work *offline* — is published to GitHub Pages from [`site/`](site/) by the [Pages workflow](.github/workflows/pages.yml): **https://nmatouka.github.io/portable-notebook/**
+
+## License
+
+This project's own source is **source-available under [PolyForm Noncommercial 1.0.0](LICENSE)** — free to use, modify, and share for any noncommercial purpose; commercial use is not granted.
+
+> Note: strictly, a "no commercial use" license is *not* OSI-approved "open source" (the [Open Source Definition](https://opensource.org/osd) forbids field-of-use restrictions). PolyForm Noncommercial is the standard, well-drafted choice for *source-available, noncommercial* software. If you'd rather it be true open source (which allows commercial use), MIT/Apache-2.0 is the swap.
+
+Bundled and built-upon components (marimo, Pyodide, Tauri, Python wheels, …) keep their own — generally permissive — licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
