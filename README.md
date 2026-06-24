@@ -1,5 +1,7 @@
 # Portable Notebook
 
+[![CI](https://github.com/nmatouka/portable-notebook/actions/workflows/ci.yml/badge.svg)](https://github.com/nmatouka/portable-notebook/actions/workflows/ci.yml)
+
 A desktop app that opens [marimo](https://marimo.io) notebooks by **double-click — fully offline, with live interactivity**. No terminal, no hosting, no internet required.
 
 An author bundles a notebook as a single file; a recipient installs this player **once**, then double-clicks any such file and it runs live and offline (sliders, inputs, and recomputation all work). The runtime lives in the installed app; the file is just the portable notebook payload — the same bargain as Wolfram's old CDF Player, but built on open standards (HTML / WASM / Python via [Pyodide](https://pyodide.org)) instead of a proprietary engine.
@@ -40,7 +42,7 @@ The spec stages the work to derisk the genuinely uncertain parts first:
 - ✅ Steps 3 & 4 — the [app](app/) serves the embedded frontend over a dedicated **`mnote://` custom protocol** and **opens a double-clicked `.mnote`** by injecting its source into the runtime. Verified on macOS: bare launch shows a default notebook; double-click (or open) a `.mnote` and it runs live (e.g. a Celsius→Fahrenheit notebook computing `68.0 °F`). **This is the core vision working end-to-end.**
 - ✅ Step 5 (security model, §7) — the player **denies notebook network egress** via a strict CSP (`connect-src 'self'`), verified to block exfiltration from both the document and the Pyodide worker. Runtime is sandboxed (Pyodide/WASM), serving is read-only/local, the notebook gets no host bridge, and the title bar shows the open file. See the [app security model](app/README.md#security-model-spec-7).
 - ✅ Step 5 (package resolution, §5) — **all three tiers**: baked, bundled in the `.mnote` ([`tools/mnote-pack.py`](tools/mnote-pack.py)), and **on-demand PyPI download** by the Rust backend (gated by a one-time confirmation, cached for offline reuse). Verified on macOS: a `cowsay` notebook downloads its wheel on first open (sha256-checked) and runs from cache offline thereafter; the webview never touches PyPI (the CSP forbids it).
-- 🔄 Cross-platform: the app is now **origin-agnostic** (works under both WebKit's `mnote://localhost` and WebView2's `http://mnote.localhost`), with `tauri-plugin-single-instance` forwarding double-clicked files on Windows/Linux; a [CI matrix](.github/workflows/ci.yml) compiles it on macOS **and** Windows. Windows *runtime* verification (on a real WebView2 machine) and installer bundling are still pending.
+- 🔄 Cross-platform: the app is now **origin-agnostic** (works under both WebKit's `mnote://localhost` and WebView2's `http://mnote.localhost`), with `tauri-plugin-single-instance` forwarding double-clicked files on Windows/Linux; a [CI matrix](.github/workflows/ci.yml) compiles it on macOS **and** Windows — **both green**. Windows *runtime* verification (on a real WebView2 machine) and installer bundling are still pending.
 - ⏭️ Remaining polish: CSP nonce hardening, a tier-3 download-progress indicator, the cold-open title fix.
 
 The product name is still undecided. The file extension is **`.mnote`** (finalized 2026-06-23) — a config value (file-association manifest + a constant in the player), not an architectural choice.
