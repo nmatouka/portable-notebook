@@ -1,0 +1,89 @@
+name: Release
+
+# Push a version tag (e.g. `git tag v0.2.0 && git push origin v0.2.0`) and this
+# builds the installers on each OS and attaches them to that tag's GitHub Release.
+# Pre-release tags (with a hyphen, e.g. v0.2.0-rc.1) are marked as pre-releases.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build installers for and attach to its release"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: release-${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            asset: Carrel-macOS-arm64.dmg
+          - os: windows-latest
+            asset: Carrel-Windows-x64-setup.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      - uses: astral-sh/setup-uv@v5
+
+      # Regenerate the offline frontend (export + vendor + sync), same as CI —
+      # it's embedded into the binary at build time.
+      - name: Prepare offline frontend
+        shell: bash
+        run: |
+          set -eux
+          cd experiments/offline-folder
+          uv run --with 'marimo==0.23.10' --with numpy \
+            marimo export html-wasm notebook.py -o dist --mode run
+          bash vendor.sh
+          cd ../../app
+          bash sync-frontend.sh
+
+      # macOS: build the .app, then pack a .dmg with hdiutil directly — Tauri's
+      # bundle_dmg.sh drives Finder via AppleScript and fails on a headless runner.
+      - name: Build macOS .dmg
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -eux
+          cd app
+          npx -y @tauri-apps/cli@2 build --bundles app
+          stage="$(mktemp -d)"
+          cp -R "src-tauri/target/release/bundle/macos/Carrel.app" "$stage/"
+          ln -s /Applications "$stage/Applications"
+          hdiutil create -volname Carrel -srcfolder "$stage" -fs HFS+ -format UDZO -ov "../${{ matrix.asset }}"
+
+      - name: Build Windows installer (NSIS)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -eux
+          cd app
+          npx -y @tauri-apps/cli@2 build --bundles nsis
+          setup="$(find src-tauri/target/release/bundle/nsis -name '*-setup.exe' | head -1)"
+          cp "$setup" "../${{ matrix.asset }}"
+
+      - name: Attach to the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          prerelease: ${{ contains(github.event.inputs.tag || github.ref_name, '-') }}
+          generate_release_notes: ${{ github.event_name == 'push' }}
+          fail_on_unmatched_files: true
+          files: ${{ matrix.asset }}
