@@ -28,18 +28,54 @@ const LOCK_PATH: &str = "_vendor/wasm.marimo.app/pyodide-lock.json";
 // origin. `connect-src 'self'` blocks network egress from BOTH the document and
 // the Pyodide worker (verified). Pyodide needs 'wasm-unsafe-eval'; marimo's
 // bootstrap needs 'unsafe-inline'; JS eval is not required. Sent on every response.
-// `'self'` resolves to whatever origin the custom protocol has on this engine
-// (mnote://localhost on WebKit, http://mnote.localhost on WebView2), so the policy
-// is origin-agnostic. connect-src 'self' blocks egress; the rest lets Pyodide run.
-const CSP: &str = "default-src 'self'; \
-script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; \
-style-src 'self' 'unsafe-inline'; \
-img-src 'self' data: blob:; \
-font-src 'self' data:; \
-connect-src 'self'; \
-worker-src 'self' blob:; \
-child-src 'self' blob:; \
-object-src 'none'; base-uri 'self'";
+// Origin-agnostic CSP (spec §7): `'self'` is whatever origin the custom protocol
+// has on this engine (mnote://localhost on WebKit, http://mnote.localhost on
+// WebView2). connect-src 'self' blocks network egress. Inline scripts run under a
+// per-response nonce rather than 'unsafe-inline', so a notebook's rendered HTML
+// can't execute inline JS in the app origin.
+fn csp(nonce: Option<&str>) -> String {
+    let script = match nonce {
+        Some(n) => format!("'self' 'nonce-{n}' 'wasm-unsafe-eval'"),
+        None => "'self' 'wasm-unsafe-eval'".to_string(),
+    };
+    format!(
+        "default-src 'self'; script-src {script}; style-src 'self' 'unsafe-inline'; \
+         img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; \
+         worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'"
+    )
+}
+
+/// A fresh CSP nonce. The browser hides the `nonce` attribute from the DOM, so
+/// notebook code can't read it to forge a matching inline <script>.
+fn script_nonce() -> String {
+    let mut b = [0u8; 16];
+    let _ = getrandom::getrandom(&mut b);
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// Add `nonce="..."` to inline <script> tags (those without `src=`); external
+/// scripts are covered by 'self'.
+fn add_nonce(html: &str, nonce: &str) -> String {
+    let mut out = String::with_capacity(html.len() + 64);
+    let mut rest = html;
+    while let Some(pos) = rest.find("<script") {
+        out.push_str(&rest[..pos]);
+        rest = &rest[pos..];
+        let Some(gt) = rest.find('>') else { break };
+        let tag = &rest[..gt];
+        if tag.contains("src=") {
+            out.push_str(&rest[..=gt]);
+        } else {
+            out.push_str(tag);
+            out.push_str(" nonce=\"");
+            out.push_str(nonce);
+            out.push_str("\">");
+        }
+        rest = &rest[gt + 1..];
+    }
+    out.push_str(rest);
+    out
+}
 
 // Tauri serves a custom protocol under different origins per webview engine.
 #[cfg(target_os = "windows")]
@@ -51,10 +87,21 @@ const WINDOW_URL: &str = "mnote://localhost/";
 #[derive(Default)]
 struct Doc {
     source: String,
+    /// Opened file name for the title bar (empty = the default notebook).
+    name: String,
     /// Lock entries (already pointed at /_pkg/) to merge into pyodide-lock.json.
     extra_packages: serde_json::Map<String, serde_json::Value>,
     /// Bundled wheel bytes, keyed by file basename, served from /_pkg/<base>.
     wheels: HashMap<String, Vec<u8>>,
+}
+
+/// Native title bar text: the open file (non-spoofable), or the product name.
+fn window_title(name: &str) -> String {
+    if name.is_empty() {
+        "mnote Player".to_string()
+    } else {
+        format!("{name} — mnote Player")
+    }
 }
 struct Current(Mutex<Doc>);
 
@@ -269,6 +316,16 @@ fn resolve_missing(app: &tauri::AppHandle, doc: &mut Doc) {
         }
     }
 
+    // Surface progress in the title bar while the (blocking) download runs.
+    if !need_net.is_empty() {
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.set_title(&format!(
+                "Downloading {} package(s)… — mnote Player",
+                need_net.len()
+            ));
+        }
+    }
+
     for r in resolver::resolve_closure(&missing, &cache, baked_names()) {
         doc.wheels.insert(r.filename, r.bytes);
         doc.extra_packages.insert(r.name, r.entry);
@@ -288,16 +345,15 @@ fn load_file(app: &tauri::AppHandle, path: &str) {
             return;
         };
         let mut doc = parse_mnote(bytes);
+        doc.name = std::path::Path::new(&path)
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
         resolve_missing(&app, &mut doc);
         *app.state::<Current>().0.lock().unwrap() = doc;
+        // The title bar follows the open file via on_page_load (below), which also
+        // covers cold opens where the file arrives before the window exists.
         if let Some(win) = app.get_webview_window("main") {
-            // Show the opened file in the native title bar — a non-spoofable
-            // affordance for which file's (untrusted) content is running.
-            let name = std::path::Path::new(&path)
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "notebook".into());
-            let _ = win.set_title(&format!("{name} — mnote Player"));
             let _ = win.eval("window.location.reload()");
         }
     });
@@ -340,15 +396,32 @@ fn main() {
             if rel.contains("..") {
                 return Response::builder().status(403).body(Vec::new()).unwrap();
             }
+            // index.html: inject the current notebook + a per-response script nonce.
+            if rel == "index.html" {
+                let tmpl = FRONTEND
+                    .get_file("index.html")
+                    .and_then(|f| f.contents_utf8())
+                    .unwrap_or("");
+                let src = app.state::<Current>().0.lock().unwrap().source.clone();
+                let n = script_nonce();
+                let html = add_nonce(&inject(tmpl, &src), &n);
+                return Response::builder()
+                    .header("Content-Type", "text/html")
+                    .header("Content-Security-Policy", csp(Some(&n)))
+                    .body(html.into_bytes())
+                    .unwrap();
+            }
+
+            let res_csp = csp(None);
             let resp = |ct: &str, body: Vec<u8>| {
                 Response::builder()
                     .header("Content-Type", ct)
-                    .header("Content-Security-Policy", CSP)
+                    .header("Content-Security-Policy", res_csp.clone())
                     .body(body)
                     .unwrap()
             };
 
-            // Wheels bundled in the open .mnote (tier 2).
+            // Wheels bundled/cached for the open .mnote (tier 2/3).
             if let Some(base) = rel.strip_prefix("_pkg/") {
                 let state = app.state::<Current>();
                 let doc = state.0.lock().unwrap();
@@ -356,16 +429,6 @@ fn main() {
                     Some(b) => resp("application/octet-stream", b.clone()),
                     None => Response::builder().status(404).body(Vec::new()).unwrap(),
                 };
-            }
-
-            // index.html with the current notebook injected.
-            if rel == "index.html" {
-                let tmpl = FRONTEND
-                    .get_file("index.html")
-                    .and_then(|f| f.contents_utf8())
-                    .unwrap_or("");
-                let src = app.state::<Current>().0.lock().unwrap().source.clone();
-                return resp("text/html", inject(tmpl, &src).into_bytes());
             }
 
             // pyodide-lock.json with bundled packages merged in.
@@ -381,6 +444,16 @@ fn main() {
             match FRONTEND.get_file(rel) {
                 Some(f) => resp(mime_for(rel), f.contents().to_vec()),
                 None => Response::builder().status(404).body(Vec::new()).unwrap(),
+            }
+        })
+        .on_page_load(|webview, _payload| {
+            // Keep the native title in sync with the open file. Fires on the
+            // initial load and on every reload, so it also fixes the cold-open
+            // case where the file arrives (via Opened) before the window exists.
+            let app = webview.app_handle();
+            let name = app.state::<Current>().0.lock().unwrap().name.clone();
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.set_title(&window_title(&name));
             }
         })
         .setup(|app| {

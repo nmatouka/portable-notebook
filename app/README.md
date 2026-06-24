@@ -70,7 +70,7 @@ open "target/debug/bundle/macos/mnote Player.app" --args /path/to/foo.mnote
 A `.mnote` carries **untrusted code** (the recipient didn't write it) and is deliberately designed to look like a document — so network egress is denied by default.
 
 **Enforced**
-- **No network egress** — the load-bearing control. Every response from the `mnote://` handler carries a strict CSP whose key directive is `connect-src 'self'`, so a hostile notebook cannot `fetch()` out. Verified against this exact policy in the browser (experiment #1): exfiltration is refused from **both** the document and the Pyodide **worker** (where the notebook's Python runs). The legit runtime is unaffected — `'wasm-unsafe-eval'` (Pyodide) + `'unsafe-inline'` scripts (marimo bootstrap); JS `eval` is not needed — and the default notebook still computes under the CSP in the app.
+- **No network egress** — the load-bearing control. Every response from the `mnote://` handler carries a strict CSP whose key directive is `connect-src 'self'`, so a hostile notebook cannot `fetch()` out. Verified against this exact policy in the browser (experiment #1): exfiltration is refused from **both** the document and the Pyodide **worker** (where the notebook's Python runs). The legit runtime is unaffected — `'wasm-unsafe-eval'` (Pyodide) + a **per-response nonce** on marimo's bootstrap scripts (no `'unsafe-inline'`, so a notebook's rendered HTML can't run inline JS); JS `eval` is not needed — and the default notebook still computes under the CSP in the app.
 - **Sandboxed runtime** — Pyodide/WASM: no real filesystem, no subprocesses, no threads.
 - **Read-only, local-only serving** — the handler returns only bytes from the embedded frontend, with a `..` traversal guard; it never touches disk or network.
 - **No host bridge** — the notebook gets only `core:default` Tauri capabilities; it cannot call the Rust backend.
@@ -78,7 +78,7 @@ A `.mnote` carries **untrusted code** (the recipient didn't write it) and is del
 
 **Known limitations / deferred**
 - Under WebKit a CSP-blocked fetch can leave the promise *pending*, so a hostile (or network-dependent) notebook may **hang** instead of erroring. No data leaks; the UX is just poor — and notebooks that genuinely need the network aren't a fit for the offline player anyway.
-- `script-src` still allows `'unsafe-inline'` (marimo's baked bootstrap). Hardening to nonces/hashes is future work and doesn't affect egress.
+- `style-src` still allows `'unsafe-inline'` (inline CSS — not script execution); `script-src` is locked to a per-response nonce.
 - When tier-3 package downloads land (spec §5), the **Rust backend** — not the notebook — will fetch them, gated by a one-time confirmation; the webview CSP stays strict.
 - In-content UI spoofing (a notebook drawing fake dialogs) is mitigated only by the title bar.
 
@@ -86,8 +86,8 @@ Test fixture: [notebook-egress.mnote](../experiments/offline-folder/notebook-egr
 
 ## Not done yet
 - Windows **runtime** verification + installers. The code is cross-platform (origin-agnostic custom protocol; `tauri-plugin-single-instance` forwards a double-clicked file to the running instance on Windows/Linux) and [CI](../.github/workflows/ci.yml) compiles it on `windows-latest`, but it hasn't been *run* on WebView2 yet, and CI is compile-only (no installer bundling). The `.mnote` registry association comes from Tauri's `bundle.fileAssociations` (already configured).
-- CSP hardening (nonces instead of `'unsafe-inline'`); graceful handling of network-blocked notebooks (vs hang).
-- Tier-3 polish: a "preparing — downloading N packages" progress indicator (spec §5); version solving; non-pure-Python (Pyodide-built) wheels.
-- Cosmetic: WebKit font 404s; the title bar doesn't reflect the file on *cold* open (only when opened into an already-running window).
+- Graceful handling of network-blocked notebooks (they can hang under WebKit rather than erroring cleanly).
+- Tier-3: version solving and non-pure-Python (Pyodide-built) wheels.
+- Cosmetic: WebKit font 404s.
 
 > A debug-only env hook `MNOTE_AUTO_DOWNLOAD=1` skips the tier-3 prompt so the download path can be exercised headlessly; release builds always prompt.
