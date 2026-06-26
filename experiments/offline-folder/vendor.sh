@@ -62,7 +62,11 @@ perl -pi -e 's#https://test-files\.pythonhosted\.org/#/_vendor/test-files.python
 #   (cd dist/_vendor && find . -type f ! -name 'pyodide-lock.json' | sort | xargs shasum -a 256) > external-sha256.txt
 echo "==> verifying vendored files against external-sha256.txt"
 sums="$PWD/external-sha256.txt"
-if (cd "$VENDOR" && shasum -a 256 -c "$sums" >/dev/null); then
+# macOS ships `shasum`; Windows git-bash / Linux ship `sha256sum` — same format.
+if command -v shasum >/dev/null 2>&1; then shacheck="shasum -a 256 -c"
+elif command -v sha256sum >/dev/null 2>&1; then shacheck="sha256sum -c"
+else echo "    ERROR: no sha256 tool (shasum/sha256sum) found." >&2; exit 1; fi
+if (cd "$VENDOR" && $shacheck "$sums" >/dev/null 2>&1); then
   echo "    all $(grep -c . "$sums") files match"
 else
   echo "    ERROR: vendored-file checksum mismatch — tampering or an upstream change. Aborting." >&2
