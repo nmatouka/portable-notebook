@@ -1,0 +1,17 @@
+249c8ea61fb366832a25f6c8072ed84e70b56d7fe29be1a57c878194f6ab4a05  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/docutils-0.22.4-py3-none-any.whl
+6c13c4ecc241e49c4fea0fd165f766fc5f2d915c2a6729feed44e8cc199e2005  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/jedi-0.19.2-py2.py3-none-any.whl
+80bd0a62a8bbadb7aa4ba2eb00423d3735523a508bdd4aea54ad79b65fd4ebbf  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/micropip-0.11.1-py3-none-any.whl
+28e18b0a03c0223769663ee5797351d2290908737b692c902db1965eff19e7ab  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/msgspec-0.20.0-cp314-cp314-pyemscripten_2026_0_wasm32.whl
+c90162c4b09a5d8ac3ce975e0b4282ed5df06de446e3d0aec7406821fc5346e1  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/numpy-2.4.3-cp314-cp314-pyemscripten_2026_0_wasm32.whl
+b5f9dcd6882f715bf582db6f19813d4c1e64ecbd1899348f827bd059c275e7c1  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/packaging-26.1-py3-none-any.whl
+767492e969d08e750366b23ac2c25237fdba88f9ee0bacb6e4e9832a67796984  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/parso-0.8.6-py2.py3-none-any.whl
+f6a334f8a09102f73df39be89f58a0cb714e994f679ae7bc290ef5209b965ac6  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/pygments-2.20.0-py3-none-any.whl
+7808c4d7a9fee23a02b0c8b7bbd51b1358e8d41bbe89e5c0ee9c0c4db7b9328f  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/pyodide.asm.mjs
+4d23bd074cc536a96660c9168e223e3aaf01944096ad829737a9c87fec4b28eb  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/pyodide.asm.wasm
+015380fbb70f22b517c15ce29163b47886fdda69b3e3823d71f4bbb0c3461746  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/pyodide_http-0.2.2-py3-none-any.whl
+1215cd239a270c13a3ecb1a84c84b7b3241baf7ea7f54615f00d79ff69c82787  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/python_stdlib.zip
+4a62fa48b4a70d44a3beaa93d38785373056dfbc3c8f61eb7914c2893a537e62  ./cdn.jsdelivr.net/pyodide/v314.0.0/full/pyyaml-6.0.3-cp314-cp314-pyemscripten_2026_0_wasm32.whl
+1f8dfa4a33a6dbff878c3e9be4c3b455dfcaf2a9322f1357db00e4e92e95b84b  ./files.pythonhosted.org/packages/37/72/e61e3091e0e00fae9d3a8ef85ece9d2cd4b5966058e1f2901ce42679eebf/narwhals-2.19.0-py3-none-any.whl
+d7a5d08014fc571e80ca21dd6f854e31f94c489800350564d55d15b3c41e76b6  ./files.pythonhosted.org/packages/7e/85/545a951eecc270fcd688288c600017e2050a1aacb56c711d208586d3e470/pymdown_extensions-10.21.3-py3-none-any.whl
+e91464b71ae3ee7afd3017d9f358ef0baf158fd9a298db92f1d4761133824c36  ./files.pythonhosted.org/packages/de/1f/77fa3081e4f66ca3576c896ae5d31c3002ac6607f9747d2e3aa49227e464/markdown-3.10.2-py3-none-any.whl
+0311da7555f68f3dd5ef73258fb66012e9a11cb12f878f0c88b0abec3231df8d  ./test-files.pythonhosted.org/packages/4e/b0/a323dd97f54aaaed4b3c5de2cfd7105eb168b01e456067b18f5878e7ef2b/marimo_base-0.23.10-py3-none-any.whl

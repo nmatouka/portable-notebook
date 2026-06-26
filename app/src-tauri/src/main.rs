@@ -38,10 +38,14 @@ fn csp(nonce: Option<&str>) -> String {
         Some(n) => format!("'self' 'nonce-{n}' 'wasm-unsafe-eval'"),
         None => "'self' 'wasm-unsafe-eval'".to_string(),
     };
+    // form-action 'self' stops a rendered <form> from POSTing to an external host
+    // (form submission is NOT covered by connect-src). Navigation egress is blocked
+    // separately by the window's on_navigation handler.
     format!(
         "default-src 'self'; script-src {script}; style-src 'self' 'unsafe-inline'; \
          img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; \
-         worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'"
+         worker-src 'self' blob:; child-src 'self' blob:; form-action 'self'; \
+         frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
     )
 }
 
@@ -105,6 +109,20 @@ fn window_title(name: &str) -> String {
 }
 struct Current(Mutex<Doc>);
 
+// Bounds to defuse a hostile .mnote (decompression-bomb / memory exhaustion).
+const MAX_MNOTE_FILE: u64 = 512 * 1024 * 1024; // whole .mnote on disk
+const MAX_TEXT: u64 = 16 * 1024 * 1024; // notebook.py / manifest.json (decompressed)
+const MAX_WHEEL: u64 = 128 * 1024 * 1024; // one bundled wheel (decompressed)
+const MAX_WHEELS_TOTAL: u64 = 512 * 1024 * 1024; // sum of bundled wheels
+const MAX_WHEEL_COUNT: usize = 256;
+
+/// Read up to `limit` bytes; None if the source is larger (bounds zip-bomb decompression).
+fn read_capped<R: Read>(r: R, limit: u64) -> Option<Vec<u8>> {
+    let mut buf = Vec::new();
+    r.take(limit + 1).read_to_end(&mut buf).ok()?;
+    (buf.len() as u64 <= limit).then_some(buf)
+}
+
 /// Parse an opened .mnote: a bare marimo .py, or a zip (notebook.py + wheels/ +
 /// manifest.json). Manifest file names are rewritten to the local /_pkg/ URL the
 /// handler serves; everything is held in memory (no temp files).
@@ -120,31 +138,34 @@ fn parse_mnote(bytes: Vec<u8>) -> Doc {
         return doc;
     };
 
-    if let Ok(mut f) = zip.by_name("notebook.py") {
-        let mut s = String::new();
-        let _ = f.read_to_string(&mut s);
-        doc.source = s;
+    if let Ok(f) = zip.by_name("notebook.py") {
+        if let Some(b) = read_capped(f, MAX_TEXT) {
+            doc.source = String::from_utf8_lossy(&b).into_owned();
+        }
     }
 
-    let manifest: Option<serde_json::Value> = zip.by_name("manifest.json").ok().and_then(|mut f| {
-        let mut s = String::new();
-        f.read_to_string(&mut s).ok()?;
-        serde_json::from_str(&s).ok()
-    });
+    let manifest: Option<serde_json::Value> = zip
+        .by_name("manifest.json")
+        .ok()
+        .and_then(|f| read_capped(f, MAX_TEXT))
+        .and_then(|b| serde_json::from_slice(&b).ok());
 
     let wheel_names: Vec<String> = zip
         .file_names()
         .filter(|n| n.starts_with("wheels/") && n.ends_with(".whl"))
+        .take(MAX_WHEEL_COUNT)
         .map(String::from)
         .collect();
+    let mut total: u64 = 0;
     for n in wheel_names {
-        if let Ok(mut f) = zip.by_name(&n) {
-            let mut b = Vec::new();
-            if f.read_to_end(&mut b).is_ok() {
-                let base = n.rsplit('/').next().unwrap_or(&n).to_string();
-                doc.wheels.insert(base, b);
-            }
+        let Ok(f) = zip.by_name(&n) else { continue };
+        let Some(b) = read_capped(f, MAX_WHEEL) else { continue };
+        total = total.saturating_add(b.len() as u64);
+        if total > MAX_WHEELS_TOTAL {
+            break;
         }
+        let base = n.rsplit('/').next().unwrap_or(&n).to_string();
+        doc.wheels.insert(base, b);
     }
 
     if let Some(serde_json::Value::Object(pkgs)) =
@@ -341,6 +362,10 @@ fn load_file(app: &tauri::AppHandle, path: &str) {
     let app = app.clone();
     let path = path.to_string();
     std::thread::spawn(move || {
+        // Refuse an absurdly large file before reading it all into memory.
+        if std::fs::metadata(&path).map(|m| m.len()).unwrap_or(u64::MAX) > MAX_MNOTE_FILE {
+            return;
+        }
         let Ok(bytes) = std::fs::read(&path) else {
             return;
         };
@@ -468,6 +493,14 @@ fn main() {
             )
             .title("Carrel")
             .inner_size(1000.0, 760.0)
+            // Confine the webview to the app's own origin. A top-level navigation
+            // (or a form submit, which navigates) to an external host is how an
+            // untrusted notebook could exfiltrate or load a phishing page despite
+            // connect-src; deny anything that isn't the mnote:// app origin.
+            .on_navigation(|url| {
+                matches!(url.scheme(), "mnote" | "about")
+                    || url.host_str() == Some("mnote.localhost")
+            })
             .build()?;
             Ok(())
         })

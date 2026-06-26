@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability. The frontend is a self-contained marimo export that makes no Tauri IPC calls yet, so only the core defaults are granted.",
+  "description": "The frontend is untrusted notebook content and makes no Tauri IPC calls, so it is granted no permissions (least privilege). The dialog/window APIs the app uses are invoked from Rust, which capabilities do not gate.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": []
 }

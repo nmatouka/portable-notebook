@@ -53,6 +53,22 @@ perl -pi -e 's#https://test-files\.pythonhosted\.org/#/_vendor/test-files.python
              s#https://cdn\.jsdelivr\.net/#/_vendor/cdn.jsdelivr.net/#g;
              s#https://wasm\.marimo\.app/#/_vendor/wasm.marimo.app/#g' "$LOCK"
 
+# Integrity: every pinned file must match the committed checksums, so a tampered or
+# MITM'd download (or a silent upstream change) fails the build instead of being
+# embedded into the app. The immutable runtime (versioned wheels + Pyodide core) is
+# pinned; the dynamically-served pyodide-lock.json is not (it would flake, and the
+# wheels it references are themselves pinned). Regenerate deliberately on a real
+# upstream change:
+#   (cd dist/_vendor && find . -type f ! -name 'pyodide-lock.json' | sort | xargs shasum -a 256) > external-sha256.txt
+echo "==> verifying vendored files against external-sha256.txt"
+sums="$PWD/external-sha256.txt"
+if (cd "$VENDOR" && shasum -a 256 -c "$sums" >/dev/null); then
+  echo "    all $(grep -c . "$sums") files match"
+else
+  echo "    ERROR: vendored-file checksum mismatch — tampering or an upstream change. Aborting." >&2
+  exit 1
+fi
+
 echo "==> done. vendored size: $(du -sh "$VENDOR" | cut -f1)"
 echo "    remaining https:// refs in workers (should be non-pyodide only):"
 grep -rhoE 'https://(cdn\.jsdelivr\.net|wasm\.marimo\.app)[^"'"'"'`]*' "$DIST"/assets/worker-*.js "$DIST"/assets/save-worker-*.js 2>/dev/null | sort -u | sed 's/^/      /' || echo "      none"

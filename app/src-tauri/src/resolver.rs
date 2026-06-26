@@ -11,6 +11,17 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashSet, VecDeque};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+const MAX_WHEEL_DL: u64 = 128 * 1024 * 1024; // cap a single downloaded wheel
+
+/// HTTP client with timeouts, so a hung/slow host can't stall the download thread.
+fn agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(15))
+        .timeout_read(Duration::from_secs(120))
+        .build()
+}
 
 /// PEP 503 name normalization.
 pub fn norm(name: &str) -> String {
@@ -137,19 +148,36 @@ fn resolve_one(norm_name: &str, cache: &Path) -> Option<Resolved> {
     let (filename, bytes) = if let Some(p) = cached_wheel(norm_name, cache) {
         (p.file_name()?.to_string_lossy().into_owned(), std::fs::read(&p).ok()?)
     } else {
-        let json: serde_json::Value =
-            ureq::get(&format!("https://pypi.org/pypi/{norm_name}/json")).call().ok()?.into_json().ok()?;
-        let w = json
-            .get("urls")?
-            .as_array()?
-            .iter()
-            .find(|u| {
-                u.get("filename").and_then(|f| f.as_str()).map_or(false, |f| f.ends_with("-py3-none-any.whl"))
-            })?;
+        let http = agent();
+        let json: serde_json::Value = http
+            .get(&format!("https://pypi.org/pypi/{norm_name}/json"))
+            .call()
+            .ok()?
+            .into_json()
+            .ok()?;
+        let w = json.get("urls")?.as_array()?.iter().find(|u| {
+            u.get("filename").and_then(|f| f.as_str()).map_or(false, |f| f.ends_with("-py3-none-any.whl"))
+        })?;
         let filename = w.get("filename")?.as_str()?.to_string();
+        // Defensive: never let a server-provided name escape the cache directory.
+        if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+            return None;
+        }
         let url = w.get("url")?.as_str()?;
+        let expected =
+            w.get("digests").and_then(|d| d.get("sha256")).and_then(|h| h.as_str()).map(str::to_owned);
+
         let mut bytes = Vec::new();
-        ureq::get(url).call().ok()?.into_reader().read_to_end(&mut bytes).ok()?;
+        http.get(url).call().ok()?.into_reader().take(MAX_WHEEL_DL + 1).read_to_end(&mut bytes).ok()?;
+        if bytes.len() as u64 > MAX_WHEEL_DL {
+            return None;
+        }
+        // Integrity: verify the bytes against PyPI's published hash (beyond TLS).
+        if let Some(exp) = &expected {
+            if !sha256_hex(&bytes).eq_ignore_ascii_case(exp) {
+                return None;
+            }
+        }
         let dir = cache.join(norm_name);
         let _ = std::fs::create_dir_all(&dir);
         let _ = std::fs::write(dir.join(&filename), &bytes);
