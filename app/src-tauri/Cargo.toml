@@ -1,6 +1,6 @@
 [package]
 name = "carrel"
-version = "0.1.0"
+version = "0.1.1"
 description = "Carrel — open marimo notebooks offline, by double-click"
 edition = "2021"
 rust-version = "1.77"
