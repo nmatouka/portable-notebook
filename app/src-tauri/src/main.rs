@@ -14,7 +14,7 @@ mod resolver;
 use include_dir::{include_dir, Dir};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use std::collections::{HashMap, HashSet};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::{Mutex, OnceLock};
 use tauri::{http::Response, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
@@ -384,7 +384,67 @@ fn load_file(app: &tauri::AppHandle, path: &str) {
     });
 }
 
+/// Bundle a notebook's source + its non-baked pure-Python wheel closure into a
+/// self-contained .mnote zip (the authoring path; mirrors tools/mnote-pack.py).
+/// Returns the number of wheels bundled.
+fn export_mnote(source: &str, out: &std::path::Path, cache: &std::path::Path) -> Result<usize, String> {
+    let missing: Vec<String> = resolver::pep723_deps(source)
+        .into_iter()
+        .filter(|d| !baked_names().contains(&resolver::norm(d)))
+        .collect();
+    let resolved = resolver::resolve_closure(&missing, cache, baked_names());
+
+    let file = std::fs::File::create(out).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(file);
+    let opts: zip::write::SimpleFileOptions = Default::default();
+
+    zip.start_file("notebook.py", opts).map_err(|e| e.to_string())?;
+    zip.write_all(source.as_bytes()).map_err(|e| e.to_string())?;
+
+    let mut packages = serde_json::Map::new();
+    for r in &resolved {
+        zip.start_file(format!("wheels/{}", r.filename), opts).map_err(|e| e.to_string())?;
+        zip.write_all(&r.bytes).map_err(|e| e.to_string())?;
+        // The manifest carries the bare basename; the player rewrites it to /_pkg/.
+        let mut entry = r.entry.clone();
+        if let Some(o) = entry.as_object_mut() {
+            o.insert("file_name".into(), serde_json::Value::String(r.filename.clone()));
+        }
+        packages.insert(r.name.clone(), entry);
+    }
+    let manifest = serde_json::json!({ "packages": packages });
+    zip.start_file("manifest.json", opts).map_err(|e| e.to_string())?;
+    zip.write_all(&serde_json::to_vec_pretty(&manifest).unwrap_or_default()).map_err(|e| e.to_string())?;
+    zip.finish().map_err(|e| e.to_string())?;
+    Ok(resolved.len())
+}
+
 fn main() {
+    // Headless authoring CLI: `carrel export <notebook.(py|mnote)> <out.mnote>`.
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("export") {
+        let (Some(inp), Some(outp)) = (args.get(2), args.get(3)) else {
+            eprintln!("usage: carrel export <notebook.(py|mnote)> <out.mnote>");
+            std::process::exit(2);
+        };
+        let bytes = std::fs::read(inp).unwrap_or_else(|e| {
+            eprintln!("cannot read {inp}: {e}");
+            std::process::exit(1);
+        });
+        let source = parse_mnote(bytes).source;
+        let cache = std::env::temp_dir().join("carrel-export-wheels");
+        match export_mnote(&source, std::path::Path::new(outp), &cache) {
+            Ok(n) => {
+                println!("wrote {outp} ({n} bundled wheel(s))");
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("export failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     let default_doc = Doc {
         source: DEFAULT_NOTEBOOK.to_string(),
         ..Default::default()
