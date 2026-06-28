@@ -1,0 +1,74 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo",
+#     "numpy",
+# ]
+# ///
+
+import marimo
+
+__generated_with = "0.23.10"
+app = marimo.App(width="medium")
+
+
+@app.cell
+def _(mo):
+    mo.md(
+        "# Carrel test notebook\n\n"
+        "If you can read this, **rendering works**. Use the controls below and watch "
+        "the output update live — that confirms the reactive Python runtime is running "
+        "fully offline (only numpy is used, and it ships inside Carrel).\n\n"
+        "**Try this**\n\n"
+        "- Move the slider or change any input → the result recomputes instantly.\n"
+        "- Disconnect from the internet → it still works (nothing is ever fetched).\n"
+        "- **File ▸ Export as .mnote**, then open the exported copy → identical behavior.\n"
+        "- Double-click this file / drag it onto the window → it opens here.\n"
+    )
+    return
+
+
+@app.cell
+def _():
+    import marimo as mo
+    import numpy as np
+    return mo, np
+
+
+@app.cell
+def _(mo):
+    name = mo.ui.text(placeholder="your name", label="Name")
+    n = mo.ui.slider(5, 100, value=20, step=5, label="How many data points")
+    op = mo.ui.dropdown(
+        ["sum", "mean", "max", "standard deviation"], value="mean", label="Reduce by"
+    )
+    show = mo.ui.checkbox(value=True, label="Show the generated array")
+    mo.vstack([name, n, op, show])
+    return name, n, op, show
+
+
+@app.cell
+def _(mo, name, n, np, op, show):
+    data = np.arange(1, n.value + 1) ** 2
+    reducers = {
+        "sum": np.sum,
+        "mean": np.mean,
+        "max": np.max,
+        "standard deviation": np.std,
+    }
+    result = float(reducers[op.value](data))
+    who = name.value.strip() or "there"
+
+    parts = [
+        f"### Hi {who} 👋",
+        f"Generated **{n.value}** squares with numpy. "
+        f"Their **{op.value}** is **{result:,.2f}**.",
+    ]
+    if show.value:
+        parts.append("```\n" + np.array2string(data, threshold=10_000) + "\n```")
+    mo.md("\n\n".join(parts))
+    return
+
+
+if __name__ == "__main__":
+    app.run()
