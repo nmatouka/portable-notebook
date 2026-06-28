@@ -16,12 +16,16 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::sync::{Mutex, OnceLock};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{http::Response, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 // Embedded at compile time → identical behavior in dev and bundled.
 static FRONTEND: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend");
 const DEFAULT_NOTEBOOK: &str = include_str!("../../default.mnote");
+// Shown on a bare launch (no file open): instructions, not a random demo. Pure
+// HTML/CSS with no scripts, so it carries no nonce and runs fine under the CSP.
+const WELCOME_HTML: &str = include_str!("../../welcome.html");
 const LOCK_PATH: &str = "_vendor/wasm.marimo.app/pyodide-lock.json";
 
 // Security model (spec §7): notebook code is untrusted, so confine it to the app
@@ -419,6 +423,138 @@ fn export_mnote(source: &str, out: &std::path::Path, cache: &std::path::Path) ->
     Ok(resolved.len())
 }
 
+/// Native menu bar: an app menu, File (Open / Export), and a standard Edit menu.
+fn build_menu(app: &tauri::App) -> tauri::Result<()> {
+    let open_i = MenuItem::with_id(app, "open", "Open Notebook…", true, Some("CmdOrCtrl+O"))?;
+    let example_i = MenuItem::with_id(app, "open_example", "Open Example", true, None::<&str>)?;
+    let export_i = MenuItem::with_id(app, "export", "Export as .mnote…", true, Some("CmdOrCtrl+E"))?;
+    let app_menu = Submenu::with_items(
+        app,
+        "Carrel",
+        true,
+        &[
+            &PredefinedMenuItem::about(app, Some("Carrel"), None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+    let file_menu = Submenu::with_items(
+        app,
+        "File",
+        true,
+        &[
+            &open_i,
+            &example_i,
+            &PredefinedMenuItem::separator(app)?,
+            &export_i,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    let edit_menu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu])?;
+    app.set_menu(menu)?;
+    Ok(())
+}
+
+/// File → Open: pick a .py/.mnote and open it. Runs off the main thread (the
+/// blocking picker would deadlock the event loop otherwise).
+fn menu_open(app: &tauri::AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Some(fp) = app
+            .dialog()
+            .file()
+            .add_filter("Notebooks", &["mnote", "py"])
+            .blocking_pick_file()
+        {
+            if let Some(p) = fp.as_path() {
+                load_file(&app, &p.to_string_lossy());
+            }
+        }
+    });
+}
+
+/// File → Open Example: load the bundled demo notebook (declares only baked
+/// packages, so it runs fully offline) and reload the window.
+fn menu_open_example(app: &tauri::AppHandle) {
+    {
+        let state = app.state::<Current>();
+        *state.0.lock().unwrap() = Doc {
+            source: DEFAULT_NOTEBOOK.to_string(),
+            name: "Example".to_string(),
+            ..Default::default()
+        };
+    }
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.eval("window.location.reload()");
+    }
+}
+
+/// File → Export: save the current notebook as a self-contained .mnote bundle.
+fn menu_export(app: &tauri::AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let (source, name) = {
+            let s = app.state::<Current>();
+            let d = s.0.lock().unwrap();
+            (d.source.clone(), d.name.clone())
+        };
+        if source.is_empty() {
+            let _ = app
+                .dialog()
+                .message("Open a notebook first, then export it as a .mnote bundle.")
+                .title("Nothing to export")
+                .blocking_show();
+            return;
+        }
+        let default_name = std::path::Path::new(&name)
+            .file_stem()
+            .map(|s| format!("{}.mnote", s.to_string_lossy()))
+            .filter(|_| !name.is_empty())
+            .unwrap_or_else(|| "notebook.mnote".to_string());
+        let Some(fp) = app
+            .dialog()
+            .file()
+            .set_file_name(&default_name)
+            .add_filter("Carrel notebook", &["mnote"])
+            .blocking_save_file()
+        else {
+            return;
+        };
+        let Some(out) = fp.as_path() else { return };
+        let cache = app
+            .path()
+            .app_cache_dir()
+            .unwrap_or_else(|_| std::env::temp_dir())
+            .join("mnote-wheels");
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_title("Bundling… — Carrel");
+        }
+        let result = export_mnote(&source, out, &cache);
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_title(&window_title(&name));
+        }
+        let msg = match result {
+            Ok(n) => format!(
+                "Saved “{}”.\n\n{n} package(s) bundled — it opens offline anywhere Carrel is installed.",
+                out.display()
+            ),
+            Err(e) => format!("Export failed: {e}"),
+        };
+        let _ = app.dialog().message(msg).title("Export").blocking_show();
+    });
+}
+
 fn main() {
     // Headless authoring CLI: `carrel export <notebook.(py|mnote)> <out.mnote>`.
     let args: Vec<String> = std::env::args().collect();
@@ -445,10 +581,10 @@ fn main() {
         }
     }
 
-    let default_doc = Doc {
-        source: DEFAULT_NOTEBOOK.to_string(),
-        ..Default::default()
-    };
+    // Empty source ⇒ the welcome screen. A user opens their own notebook (the
+    // reason they have Carrel) by double-click / File ▸ Open / drag, or tries the
+    // bundled demo via File ▸ Open Example.
+    let default_doc = Doc::default();
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
@@ -481,13 +617,21 @@ fn main() {
             if rel.contains("..") {
                 return Response::builder().status(403).body(Vec::new()).unwrap();
             }
-            // index.html: inject the current notebook + a per-response script nonce.
+            // index.html: the welcome screen when no notebook is open, otherwise the
+            // marimo frontend with the current source injected + a per-response nonce.
             if rel == "index.html" {
+                let src = app.state::<Current>().0.lock().unwrap().source.clone();
+                if src.is_empty() {
+                    return Response::builder()
+                        .header("Content-Type", "text/html")
+                        .header("Content-Security-Policy", csp(None))
+                        .body(WELCOME_HTML.as_bytes().to_vec())
+                        .unwrap();
+                }
                 let tmpl = FRONTEND
                     .get_file("index.html")
                     .and_then(|f| f.contents_utf8())
                     .unwrap_or("");
-                let src = app.state::<Current>().0.lock().unwrap().source.clone();
                 let n = script_nonce();
                 let html = add_nonce(&inject(tmpl, &src), &n);
                 return Response::builder()
@@ -541,12 +685,19 @@ fn main() {
                 let _ = win.set_title(&window_title(&name));
             }
         })
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "open" => menu_open(app),
+            "open_example" => menu_open_example(app),
+            "export" => menu_export(app),
+            _ => {}
+        })
         .setup(|app| {
+            build_menu(app)?;
             // Windows/Linux (and some macOS launches) pass the file as argv[1].
             if let Some(arg) = std::env::args().nth(1) {
                 load_file(app.handle(), &arg);
             }
-            WebviewWindowBuilder::new(
+            let win = WebviewWindowBuilder::new(
                 app,
                 "main",
                 WebviewUrl::CustomProtocol(WINDOW_URL.parse().unwrap()),
@@ -562,6 +713,15 @@ fn main() {
                     || url.host_str() == Some("mnote.localhost")
             })
             .build()?;
+            // Drag a notebook file onto the window to open it.
+            let handle = app.handle().clone();
+            win.on_window_event(move |event| {
+                if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                    if let Some(p) = paths.first() {
+                        load_file(&handle, &p.to_string_lossy());
+                    }
+                }
+            });
             Ok(())
         })
         .build(tauri::generate_context!())

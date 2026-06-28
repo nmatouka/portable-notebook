@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carrel</title>
+<style>
+  :root{--bg:#fbfbfd;--fg:#1a1a1f;--muted:#5b5b6b;--line:#e6e6ee;--accent:#4f46e5;--accent-soft:#eef0fe;--code:#f4f4f8}
+  @media (prefers-color-scheme:dark){:root{--bg:#0e0e12;--fg:#ececf2;--muted:#9a9aaa;--line:#26262f;--accent:#8b88f6;--accent-soft:#191934;--code:#16161c}}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;display:grid;place-items:center}
+  main{max-width:560px;padding:40px 28px;text-align:left}
+  .mark{font-weight:800;font-size:34px;letter-spacing:-.02em;margin-bottom:6px}
+  .sub{color:var(--muted);margin:0 0 28px;font-size:17px}
+  .hints{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+  .hint{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .ico{flex:none;width:34px;height:34px;border-radius:9px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:17px}
+  .hint b{display:block;margin-bottom:1px}
+  .hint p{margin:0;color:var(--muted);font-size:14.5px}
+  code{background:var(--code);border:1px solid var(--line);border-radius:5px;padding:.05em .4em;font-size:.9em}
+  kbd{background:var(--code);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:.05em .45em;font-size:.85em;font-family:inherit}
+  .foot{margin-top:24px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <div class="mark">Carrel</div>
+  <p class="sub">Open marimo notebooks — live, offline, by double-click.</p>
+  <ul class="hints">
+    <li class="hint"><span class="ico">↥</span><div><b>Open a notebook</b><p>Drag a <code>.mnote</code> or <code>.py</code> onto this window, or use <kbd>File ▸ Open Notebook</kbd> (<kbd>⌘O</kbd>).</p></div></li>
+    <li class="hint"><span class="ico">⇪</span><div><b>Share one</b><p>Open a notebook, then <kbd>File ▸ Export as .mnote</kbd> bundles it so it opens offline anywhere Carrel is installed.</p></div></li>
+    <li class="hint"><span class="ico">★</span><div><b>New here?</b><p><kbd>File ▸ Open Example</kbd> runs a live notebook so you can see how it feels.</p></div></li>
+  </ul>
+  <p class="foot">A <code>.mnote</code> is just a marimo notebook; Carrel supplies the runtime, so nothing needs installing to view one.</p>
+</main>
+</body>
+</html>
