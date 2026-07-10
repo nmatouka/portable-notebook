@@ -55,3 +55,12 @@ jobs:
           set -eux
           cd app/src-tauri
           cargo build
+
+      # Unit tests for the package resolver (lock-catalog reconstruction, PEP 723
+      # parsing) — the logic that lets marimo gallery examples resolve their wheels.
+      - name: Test
+        shell: bash
+        run: |
+          set -eux
+          cd app/src-tauri
+          cargo test
