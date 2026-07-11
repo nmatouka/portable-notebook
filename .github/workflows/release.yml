@@ -64,8 +64,20 @@ jobs:
           set -eux
           cd app
           npx -y @tauri-apps/cli@2 build --bundles app
+          app="src-tauri/target/release/bundle/macos/Carrel.app"
+          # Seal the whole bundle with a valid *ad-hoc* signature. No Developer ID
+          # and no notarization — this only guarantees Gatekeeper sees an intact
+          # signature. Without it the bundle is effectively unsigned, and a
+          # quarantined download hard-fails as "Carrel is damaged and can't be
+          # opened" (which right-click → Open can't bypass). With a valid ad-hoc
+          # signature it falls back to the bypassable "unidentified developer"
+          # prompt instead.
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
           stage="$(mktemp -d)"
-          cp -R "src-tauri/target/release/bundle/macos/Carrel.app" "$stage/"
+          # ditto preserves the signature and xattrs; cp -R can leave the copied
+          # bundle unsealed, which is what re-introduces the "damaged" verdict.
+          ditto "$app" "$stage/Carrel.app"
           ln -s /Applications "$stage/Applications"
           hdiutil create -volname Carrel -srcfolder "$stage" -fs HFS+ -format UDZO -ov "../${{ matrix.asset }}"
 
