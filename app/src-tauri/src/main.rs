@@ -328,6 +328,10 @@ fn resolve_missing(app: &tauri::AppHandle, doc: &mut Doc) {
         .unwrap_or_else(|_| std::env::temp_dir())
         .join("mnote-wheels");
 
+    // Debug-only test hook so the download/resolve path can be exercised headlessly
+    // (a blocking dialog with no user would hang a test); release builds never set it.
+    let auto = cfg!(debug_assertions) && std::env::var_os("MNOTE_AUTO_DOWNLOAD").is_some();
+
     // Tier-3 gate: an untrusted file is driving a download — confirm before any
     // network fetch. Already-cached packages need no prompt (offline reuse).
     let need_net: Vec<&String> = missing
@@ -336,9 +340,6 @@ fn resolve_missing(app: &tauri::AppHandle, doc: &mut Doc) {
         .collect();
     if !need_net.is_empty() {
         let list = need_net.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
-        // Debug-only test hook so the download path can be exercised headlessly;
-        // release builds always prompt.
-        let auto = cfg!(debug_assertions) && std::env::var_os("MNOTE_AUTO_DOWNLOAD").is_some();
         let ok = auto
             || app
                 .dialog()
@@ -364,9 +365,33 @@ fn resolve_missing(app: &tauri::AppHandle, doc: &mut Doc) {
         }
     }
 
-    for r in resolver::resolve_closure(&missing, &cache, baked_names(), lock_catalog()) {
+    let resolved = resolver::resolve_closure(&missing, &cache, baked_names(), lock_catalog());
+    let got: HashSet<String> = resolved.iter().map(|r| resolver::norm(&r.name)).collect();
+    for r in resolved {
         doc.wheels.insert(r.filename, r.bytes);
         doc.extra_packages.insert(r.name, r.entry);
+    }
+
+    // Any declared dependency we couldn't source stays silently absent — the notebook
+    // would then throw a bare `ModuleNotFoundError` deep in a cell, which reads as "the
+    // app is broken." Name them plainly instead, so it's clear the limitation is the
+    // notebook's (a package with no WebAssembly build, not on PyPI, or one that needs
+    // live internet — which Carrel blocks by design), not Carrel failing to open it.
+    let unavailable: Vec<String> = missing
+        .iter()
+        .filter(|m| !got.contains(&resolver::norm(m)))
+        .cloned()
+        .collect();
+    if !unavailable.is_empty() && !auto {
+        let _ = app
+            .dialog()
+            .message(format!(
+                "Carrel couldn't get {} package(s) this notebook needs for offline use:\n\n{}\n\nThe notebook will still open, but any cells that use them may show errors. This usually means the package has no offline (WebAssembly) build, isn't published on PyPI, or needs live internet access.",
+                unavailable.len(),
+                unavailable.join(", ")
+            ))
+            .title("Some packages aren't available offline")
+            .blocking_show();
     }
 }
 
