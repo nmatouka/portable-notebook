@@ -293,9 +293,22 @@ fn baked_names() -> &'static HashSet<String> {
     })
 }
 
+/// Catalog of every package the served pyodide-lock.json describes (name → source +
+/// hash + deps). ~373 packages are listed but only a handful of wheels are baked; for
+/// the rest this lets the backend fetch the exact Pyodide-built wheel on demand.
+fn lock_catalog() -> &'static HashMap<String, resolver::LockPkg> {
+    static CATALOG: OnceLock<HashMap<String, resolver::LockPkg>> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        let raw = FRONTEND.get_file(LOCK_PATH).and_then(|f| f.contents_utf8()).unwrap_or("{}");
+        resolver::build_catalog(raw)
+    })
+}
+
 /// Fill `doc` with wheels for any declared dependency that is neither baked nor
-/// already bundled — downloading the pure-Python closure from PyPI once (gated +
-/// cached) if needed. The webview never fetches; only this backend does (spec §7).
+/// already bundled — downloading its closure once (gated + cached) if needed: the
+/// exact Pyodide-built wheel for packages the lock lists (numpy, pandas, matplotlib,
+/// … — what marimo gallery examples need), else a pure-Python wheel from PyPI. The
+/// webview never fetches; only this backend does (spec §7).
 fn resolve_missing(app: &tauri::AppHandle, doc: &mut Doc) {
     let bundled: HashSet<String> = doc.extra_packages.keys().map(|k| resolver::norm(k)).collect();
     let missing: Vec<String> = resolver::pep723_deps(&doc.source)
@@ -351,7 +364,7 @@ fn resolve_missing(app: &tauri::AppHandle, doc: &mut Doc) {
         }
     }
 
-    for r in resolver::resolve_closure(&missing, &cache, baked_names()) {
+    for r in resolver::resolve_closure(&missing, &cache, baked_names(), lock_catalog()) {
         doc.wheels.insert(r.filename, r.bytes);
         doc.extra_packages.insert(r.name, r.entry);
     }
@@ -396,7 +409,7 @@ fn export_mnote(source: &str, out: &std::path::Path, cache: &std::path::Path) ->
         .into_iter()
         .filter(|d| !baked_names().contains(&resolver::norm(d)))
         .collect();
-    let resolved = resolver::resolve_closure(&missing, cache, baked_names());
+    let resolved = resolver::resolve_closure(&missing, cache, baked_names(), lock_catalog());
 
     let file = std::fs::File::create(out).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
